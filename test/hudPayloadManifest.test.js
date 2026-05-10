@@ -21,6 +21,11 @@ test("3D HUD payload manifest lists unique existing compiled files", async () =>
   const manifestUrl = new URL("../public/payload/3d-hud/manifest.json", import.meta.url);
   const manifest = JSON.parse(await readFile(manifestUrl, "utf8"));
   assert.deepEqual(manifest.files, requiredPaths);
+  assert.equal(manifest.sourceRepository, "Hantu-Raya/Deadlock-mods-collection");
+  assert.equal(manifest.sourceRef, "main");
+  assert.equal(manifest.sourcePath, "3d hud");
+  assert.equal(manifest.scriptMinifier, "terser");
+  assert.match(manifest.sourceCommit, /^[0-9a-f]{40}$/);
 
   const normalized = manifest.files.map(normalizeVpkPath);
   assert.equal(new Set(normalized).size, normalized.length);

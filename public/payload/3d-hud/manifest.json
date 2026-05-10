@@ -1,6 +1,15 @@
 {
   "name": "3d-hud",
-  "source": "F:\\Users\\FoxOS_User\\Desktop\\Deadlock-mods-collection\\3d hud_compiled",
+  "source": "https://github.com/Hantu-Raya/Deadlock-mods-collection/tree/main/3d%20hud",
+  "sourceRepository": "Hantu-Raya/Deadlock-mods-collection",
+  "sourceRef": "main",
+  "sourceCommit": "134cd71085c76b721510b6a028dad3d747aff0fb",
+  "sourcePath": "3d hud",
+  "compiler": "Source 2 compiler wrapper",
+  "scriptMinifier": "terser",
+  "preservedCompiledFiles": [
+    "panorama/layout/hud_health_container.vxml_c"
+  ],
   "files": [
     "panorama/layout/hud.vxml_c",
     "panorama/layout/hud_health_container.vxml_c",

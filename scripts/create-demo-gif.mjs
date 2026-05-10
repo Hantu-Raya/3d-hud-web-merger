@@ -14,7 +14,7 @@ const OUTPUT_GIF = path.join(PUBLIC_DEMO_ROOT, "usage-demo.gif");
 const DEMO_URL = process.env.DEMO_URL || "http://127.0.0.1:4328/3d-hud-web-merger/";
 const VIEWPORT = { width: 960, height: 760 };
 const FRAME_RATE = 12;
-const HOLD_FRAMES = 8;
+const HOLD_FRAMES = 14;
 const MOVE_FRAMES = 7;
 const CLICK_FRAMES = 4;
 
@@ -188,10 +188,10 @@ async function generateFrames(sampleVpkPath) {
     await page.locator('input[type="file"]').setInputFiles(sampleVpkPath);
     await page.getByRole("heading", { name: "Ready to merge" }).waitFor({ timeout: 10000 });
     await moveCursor(page, frames, "2. The browser checks entries and confirms the merge is safe.", choosePoint, resultPoint);
-    await holdCursor(page, frames, "2. The browser checks entries and confirms the merge is safe.", resultPoint, 6);
+    await holdCursor(page, frames, "2. The browser checks entries and confirms the merge is safe.", resultPoint, 10);
 
     await moveCursor(page, frames, "3. Repack a merged copy. The original VPK stays untouched.", resultPoint, repackPoint);
-    await holdCursor(page, frames, "3. Repack a merged copy. The original VPK stays untouched.", repackPoint, 4);
+    await holdCursor(page, frames, "3. Repack a merged copy. The original VPK stays untouched.", repackPoint, 8);
     await clickCursor(page, frames, "3. Repack a merged copy. The original VPK stays untouched.", repackPoint);
     const downloadPromise = page.waitForEvent("download", { timeout: 30000 });
     await page.locator("button.primary-action").click();
@@ -199,7 +199,7 @@ async function generateFrames(sampleVpkPath) {
     await download.saveAs(path.join(DEMO_ROOT, await download.suggestedFilename()));
     await page.getByText("Built merged-sample-addon_dir.vpk", { exact: false }).waitFor({ timeout: 10000 });
     await moveCursor(page, frames, "4. Download the merged VPK and place it in your addons folder.", repackPoint, downloadPoint);
-    await holdCursor(page, frames, "4. Download the merged VPK and place it in your addons folder.", downloadPoint);
+    await holdCursor(page, frames, "4. Download the merged VPK and place it in your addons folder.", downloadPoint, 16);
   } finally {
     await browser.close();
   }
