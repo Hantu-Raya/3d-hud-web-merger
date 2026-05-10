@@ -4,5 +4,6 @@ dist/
 .dev-server.*.log
 .helper-server.*.log
 .tmp-vrf/
+.tmp-demo/
 .agents/
 skills-lock.json

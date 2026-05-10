@@ -15,6 +15,7 @@
   "scripts": {
     "dev": "astro dev",
     "helper": "node scripts/local-compiler-helper.mjs",
+    "demo:gif": "node scripts/create-demo-gif.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "test": "node --test",

@@ -4,6 +4,10 @@ Browser-based tool for merging the compiled Deadlock 3D HUD payload into an exis
 
 The tool reads the uploaded VPK locally in the browser. Simple non-conflicting merges happen fully client-side. Supported layout and CSS conflicts can be patched through the optional local compiler helper.
 
+## Demo
+
+![3D HUD VPK Merger usage demo](public/demo/usage-demo.gif)
+
 ## Run Locally
 
 ```bash
@@ -37,6 +41,12 @@ In the GitHub repository settings, set Pages to **GitHub Actions**. The included
 npx -y react-doctor@latest . --json --offline
 npm run check
 node --check scripts/local-compiler-helper.mjs
+```
+
+To regenerate the README demo GIF while the local dev server is running:
+
+```bash
+npm run demo:gif
 ```
 
 ## Notes
