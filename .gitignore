@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.astro/
+.dev-server.*.log
+.helper-server.*.log
+.tmp-vrf/
+.agents/
+skills-lock.json

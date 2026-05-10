@@ -1,0 +1,15 @@
+{
+  "name": "3d-hud",
+  "source": "F:\\Users\\FoxOS_User\\Desktop\\Deadlock-mods-collection\\3d hud_compiled",
+  "files": [
+    "panorama/layout/hud.vxml_c",
+    "panorama/layout/hud_health_container.vxml_c",
+    "panorama/layout/hud_health.vxml_c",
+    "panorama/scripts/3d_hero_dynamic.vjs_c",
+    "panorama/styles/3d_hud.vcss_c",
+    "panorama/styles/citadel_status_effect.vcss_c",
+    "panorama/styles/hud_health.vcss_c",
+    "panorama/styles/hud_health_container.vcss_c",
+    "panorama/styles/unit_status_icons.vcss_c"
+  ]
+}

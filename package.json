@@ -1,0 +1,32 @@
+{
+  "name": "3d-hud-web-merger",
+  "private": true,
+  "type": "module",
+  "author": "Hantu-Raya",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Hantu-Raya/3d-hud-web-merger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Hantu-Raya/3d-hud-web-merger/issues"
+  },
+  "homepage": "https://github.com/Hantu-Raya/3d-hud-web-merger#readme",
+  "scripts": {
+    "dev": "astro dev",
+    "helper": "node scripts/local-compiler-helper.mjs",
+    "build": "astro build",
+    "preview": "astro preview",
+    "test": "node --test",
+    "check": "npm test && npm run build"
+  },
+  "dependencies": {
+    "@astrojs/react": "^5.0.4",
+    "astro": "^6.3.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.59.1"
+  }
+}

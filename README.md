@@ -1,0 +1,50 @@
+# 3D HUD VPK Merger
+
+Browser-based tool for merging the compiled Deadlock 3D HUD payload into an existing addon VPK.
+
+The tool reads the uploaded VPK locally in the browser. Simple non-conflicting merges happen fully client-side. Supported layout and CSS conflicts can be patched through the optional local compiler helper.
+
+## Run Locally
+
+```bash
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:4328/3d-hud-web-merger/` or the port Astro prints.
+
+For VPKs that need compiled layout or CSS patching, run the helper in a second terminal:
+
+```bash
+npm run helper
+```
+
+The helper listens only on `127.0.0.1` and allows the GitHub Pages origin by default.
+
+## GitHub Pages
+
+This repo is configured for project Pages at:
+
+```text
+https://hantu-raya.github.io/3d-hud-web-merger/
+```
+
+In the GitHub repository settings, set Pages to **GitHub Actions**. The included workflow builds and deploys `dist` on pushes to `main`.
+
+## Verification
+
+```bash
+npx -y react-doctor@latest . --json --offline
+npm run check
+node --check scripts/local-compiler-helper.mjs
+```
+
+## Notes
+
+- VPK files are processed locally; the web app does not upload them to a server.
+- The hosted GitHub Pages app can still use the local compiler helper when it is running on the user's machine.
+- This is an unofficial fan-made tool and is not affiliated with Valve.
+
+## License
+
+MIT. See `LICENSE` and `NOTICE.md`.

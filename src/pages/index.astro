@@ -1,0 +1,38 @@
+---
+import HudInjectIsland from "../components/HudInjectIsland.jsx";
+import "../styles/global.css";
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>3D HUD VPK Merger</title>
+    <meta
+      name="description"
+      content="Merge an existing Deadlock addon VPK with the compiled 3D HUD payload, with local compiler patching for supported conflicts."
+    />
+    <meta property="og:title" content="3D HUD VPK Merger" />
+    <meta
+      property="og:description"
+      content="A browser-first Deadlock addon merge tool for adding the compiled 3D HUD payload to an uploaded VPK."
+    />
+    <script is:inline>
+      (() => {
+        const key = "3d-hud-theme-mode";
+        const stored = localStorage.getItem(key);
+        const mode = stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+        const systemDark = matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.dataset.themeMode = mode;
+        document.documentElement.dataset.resolvedTheme = mode === "system" ? (systemDark ? "dark" : "light") : mode;
+      })();
+    </script>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <main id="main-content" class="app-shell">
+      <HudInjectIsland client:load />
+    </main>
+  </body>
+</html>
