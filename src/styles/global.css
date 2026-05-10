@@ -758,10 +758,11 @@ h2 {
 
 .tutorial-dialog {
   display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 16px;
   width: min(900px, 100%);
   max-height: min(88dvh, 780px);
-  overflow: auto;
+  overflow: hidden;
   padding: 18px;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
@@ -826,6 +827,10 @@ h2 {
 }
 
 .tutorial-media {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: 10px;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -834,8 +839,11 @@ h2 {
 
 .tutorial-media img {
   display: block;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
+  max-height: min(54dvh, 520px);
   height: auto;
+  object-fit: contain;
 }
 
 @media (max-width: 780px) {
@@ -929,6 +937,11 @@ h2 {
   }
 
   .tutorial-dialog {
+    max-height: calc(100dvh - 20px);
     padding: 14px;
+  }
+
+  .tutorial-media img {
+    max-height: calc(100dvh - 220px);
   }
 }
