@@ -15,6 +15,8 @@
   --support-hover: #714d20;
   --heart-idle: #fff9ee;
   --heart-pink: #e95f98;
+  --tutorial-bg: #fff7e8;
+  --tutorial-hover: #f7ead4;
   --file-bg: #fbf8f2;
   --table-head: #f4efe6;
   --action-hover: #38332b;
@@ -52,6 +54,8 @@
   --support-hover: #ffd79a;
   --heart-idle: #1c1710;
   --heart-pink: #ff70ad;
+  --tutorial-bg: #2b241a;
+  --tutorial-hover: #3a2f20;
   --file-bg: #1d1a16;
   --table-head: #28231d;
   --action-hover: #ead9bd;
@@ -266,8 +270,13 @@ h2 {
   display: grid;
   grid-template-rows: auto auto 1fr;
   align-content: start;
-  gap: 24px;
+  gap: 18px;
   min-width: 216px;
+}
+
+.hero-action-buttons {
+  display: grid;
+  gap: 8px;
 }
 
 .readiness {
@@ -275,35 +284,56 @@ h2 {
   gap: 8px;
 }
 
-.support-button {
+.support-button,
+.tutorial-button {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 12px;
   min-height: 42px;
   padding: 0 16px;
-  border: 1px solid color-mix(in srgb, var(--support-bg) 76%, var(--border));
   border-radius: 6px;
-  background: var(--support-bg);
-  color: var(--support-text);
   font-size: 0.88rem;
   font-weight: 850;
   letter-spacing: 0.02em;
   text-decoration: none;
+  cursor: pointer;
   transition:
     background 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 180ms cubic-bezier(0.16, 1, 0.3, 1),
     transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.support-button {
+  border: 1px solid color-mix(in srgb, var(--support-bg) 76%, var(--border));
+  background: var(--support-bg);
+  color: var(--support-text);
 }
 
 .support-button:hover {
   background: var(--support-hover);
 }
 
-.support-button:active {
+.tutorial-button {
+  border: 1px solid var(--border-strong);
+  background: var(--tutorial-bg);
+  color: var(--text);
+}
+
+.tutorial-button:hover {
+  border-color: var(--accent);
+  background: var(--tutorial-hover);
+}
+
+.support-button:active,
+.tutorial-button:active {
   transform: scale(0.98);
 }
 
-.support-button:focus-visible {
+.support-button:focus-visible,
+.tutorial-button:focus-visible,
+.modal-close:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 3px;
 }
@@ -338,6 +368,16 @@ h2 {
 .support-button:hover .support-heart path {
   fill: var(--heart-pink);
   stroke: var(--heart-pink);
+}
+
+.action-icon {
+  flex: 0 0 auto;
+  inline-size: 18px;
+  block-size: 18px;
+}
+
+.action-icon path {
+  fill: currentColor;
 }
 
 @keyframes heart-wiggle {
@@ -706,6 +746,98 @@ h2 {
   outline-offset: 3px;
 }
 
+.tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(23, 21, 18, 0.68);
+}
+
+.tutorial-dialog {
+  display: grid;
+  gap: 16px;
+  width: min(900px, 100%);
+  max-height: min(88dvh, 780px);
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 70px rgba(23, 21, 18, 0.34);
+}
+
+.tutorial-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.tutorial-header > div {
+  display: grid;
+  gap: 6px;
+}
+
+.tutorial-copy {
+  max-width: 68ch;
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+.modal-close {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  inline-size: 38px;
+  block-size: 38px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    background 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-close:hover {
+  background: var(--tutorial-hover);
+}
+
+.modal-close:active {
+  transform: scale(0.96);
+}
+
+.close-icon {
+  inline-size: 19px;
+  block-size: 19px;
+}
+
+.close-icon path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
+.tutorial-media {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.tutorial-media img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 @media (max-width: 780px) {
   .app-shell {
     width: min(100vw - 20px, 620px);
@@ -731,6 +863,10 @@ h2 {
 
   .hero-actions {
     min-width: 0;
+  }
+
+  .hero-action-buttons {
+    grid-template-columns: 1fr 1fr;
   }
 
   .command-panel {
@@ -771,6 +907,10 @@ h2 {
     grid-template-columns: 1fr;
   }
 
+  .hero-action-buttons {
+    grid-template-columns: 1fr;
+  }
+
   h1 {
     font-size: clamp(2rem, 14vw, 3rem);
   }
@@ -782,5 +922,13 @@ h2 {
 
   .theme-choice {
     padding: 0 8px;
+  }
+
+  .tutorial-overlay {
+    padding: 10px;
+  }
+
+  .tutorial-dialog {
+    padding: 14px;
   }
 }

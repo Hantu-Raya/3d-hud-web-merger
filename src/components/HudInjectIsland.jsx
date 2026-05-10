@@ -9,9 +9,16 @@ import { writeVpk } from "../vpkWriter.js";
 
 const DEFAULT_COMPILER_HELPER_URL = "http://127.0.0.1:4329";
 const THEME_STORAGE_KEY = "3d-hud-theme-mode";
+const TUTORIAL_GIF_PATH = "demo/usage-demo.gif";
 const COMPILER_HELPER_URL = String(
   import.meta.env.PUBLIC_HUD_INJECT_HELPER_URL || DEFAULT_COMPILER_HELPER_URL
 ).replace(/\/+$/, "");
+
+function joinAssetPath(baseUrl, path) {
+  const base = String(baseUrl || "/");
+  const cleanBase = base.endsWith("/") ? base : `${base}/`;
+  return `${cleanBase}${String(path || "").replace(/^\/+/, "")}`;
+}
 
 function compilerHelperEndpoint(path) {
   return `${COMPILER_HELPER_URL}/${String(path || "").replace(/^\/+/, "")}`;
@@ -191,7 +198,9 @@ async function requestCompilerBackedMerge(file) {
 
 export default function HudInjectIsland() {
   const parseRunRef = useRef(0);
+  const closeTutorialRef = useRef(null);
   const [themeMode, setThemeMode] = useState(getStoredThemeMode);
+  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const [state, dispatch] = useReducer(reducer, initialState);
   const {
     payload,
@@ -250,6 +259,28 @@ export default function HudInjectIsland() {
     return () => media.removeEventListener("change", handleSystemThemeChange);
   }, [themeMode]);
 
+  useEffect(() => {
+    if (!isTutorialOpen || typeof document === "undefined") {
+      return undefined;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeTutorialRef.current?.focus();
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setIsTutorialOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isTutorialOpen]);
+
   const browserPlan = useMemo(() => {
     if (!parsed || !payload) return null;
     return resolveHudPayloadConflicts(parsed.files, payload.files, {
@@ -307,6 +338,7 @@ export default function HudInjectIsland() {
   const actionHelp = isBusy
     ? "Working on the uploaded VPK..."
     : (canMerge ? "Builds and downloads a merged copy. The original file is not changed." : "Choose a VPK and wait for readiness checks.");
+  const tutorialGifUrl = joinAssetPath(import.meta.env.BASE_URL, TUTORIAL_GIF_PATH);
 
   async function parseFile(file) {
     const runId = parseRunRef.current + 1;
@@ -411,6 +443,7 @@ export default function HudInjectIsland() {
     <section className="injector" aria-label="3D HUD VPK merger">
       <HeroPanel
         helperStatus={helperStatus}
+        onTutorialOpen={() => setIsTutorialOpen(true)}
         onThemeModeChange={handleThemeModeChange}
         payload={payload}
         themeMode={themeMode}
@@ -453,6 +486,12 @@ export default function HudInjectIsland() {
           {" "}MIT licensed; see LICENSE and NOTICE.md.
         </p>
       </footer>
+      <TutorialDialog
+        closeButtonRef={closeTutorialRef}
+        gifUrl={tutorialGifUrl}
+        isOpen={isTutorialOpen}
+        onClose={() => setIsTutorialOpen(false)}
+      />
     </section>
   );
 }
@@ -482,7 +521,7 @@ function ThemeSwitcher({ value, onChange }) {
   );
 }
 
-function HeroPanel({ helperStatus, onThemeModeChange, payload, themeMode }) {
+function HeroPanel({ helperStatus, onTutorialOpen, onThemeModeChange, payload, themeMode }) {
   return (
     <header className="hero-panel">
       <div className="hero-copy">
@@ -494,10 +533,17 @@ function HeroPanel({ helperStatus, onThemeModeChange, payload, themeMode }) {
       </div>
 
       <div className="hero-actions">
-        <a className="support-button" href="https://ko-fi.com/hantuaraya" target="_blank" rel="noreferrer">
-          <HeartIcon />
-          <span>Support development</span>
-        </a>
+        <div className="hero-action-buttons">
+          <a className="support-button" href="https://ko-fi.com/hantuaraya" target="_blank" rel="noreferrer">
+            <HeartIcon />
+            <span>Support development</span>
+          </a>
+
+          <button className="tutorial-button" type="button" onClick={onTutorialOpen}>
+            <PlayIcon />
+            <span>Watch tutorial</span>
+          </button>
+        </div>
 
         <div className="readiness" aria-label="Readiness checks">
           <StatusBadge label="Payload" value={payload ? "Ready" : "Loading"} tone={payload ? "good" : "warn"} />
@@ -510,11 +556,67 @@ function HeroPanel({ helperStatus, onThemeModeChange, payload, themeMode }) {
   );
 }
 
+function PlayIcon() {
+  return (
+    <svg className="action-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8.25 5.75v12.5L18 12 8.25 5.75Z" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg className="close-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m6.75 6.75 10.5 10.5m0-10.5-10.5 10.5" />
+    </svg>
+  );
+}
+
 function HeartIcon() {
   return (
     <svg className="support-heart" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 20.8 10.8 19.7C5.9 15.2 2.8 12.4 2.8 8.9 2.8 6.1 5 4 7.7 4c1.6 0 3.2.8 4.3 2 1.1-1.2 2.7-2 4.3-2 2.7 0 4.9 2.1 4.9 4.9 0 3.5-3.1 6.3-8 10.8L12 20.8Z" />
     </svg>
+  );
+}
+
+function TutorialDialog({ closeButtonRef, gifUrl, isOpen, onClose }) {
+  if (!isOpen) {
+    return null;
+  }
+
+  function handleOverlayClick(event) {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  }
+
+  return (
+    <div className="tutorial-overlay" role="presentation" onMouseDown={handleOverlayClick}>
+      <section
+        className="tutorial-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tutorial-title"
+        aria-describedby="tutorial-copy"
+      >
+        <div className="tutorial-header">
+          <div>
+            <p className="section-label">Tutorial</p>
+            <h2 id="tutorial-title">How to merge a VPK</h2>
+          </div>
+          <button ref={closeButtonRef} className="modal-close" type="button" onClick={onClose} aria-label="Close tutorial">
+            <CloseIcon />
+          </button>
+        </div>
+        <p id="tutorial-copy" className="tutorial-copy">
+          Choose an addon VPK, wait for the checks, then repack a merged copy. Your original file stays unchanged.
+        </p>
+        <div className="tutorial-media">
+          <img src={gifUrl} alt="Animated walkthrough showing the VPK merge flow" />
+        </div>
+      </section>
+    </div>
   );
 }
 
