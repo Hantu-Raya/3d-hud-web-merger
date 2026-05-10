@@ -13,7 +13,10 @@ const PUBLIC_DEMO_ROOT = path.join(PROJECT_ROOT, "public", "demo");
 const OUTPUT_GIF = path.join(PUBLIC_DEMO_ROOT, "usage-demo.gif");
 const DEMO_URL = process.env.DEMO_URL || "http://127.0.0.1:4328/3d-hud-web-merger/";
 const VIEWPORT = { width: 960, height: 760 };
-const REPEAT_FRAMES = 10;
+const FRAME_RATE = 12;
+const HOLD_FRAMES = 8;
+const MOVE_FRAMES = 7;
+const CLICK_FRAMES = 4;
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -74,6 +77,19 @@ async function installDemoOverlay(page) {
         transform: translate(-50%, -50%);
         pointer-events: none;
       }
+
+      .demo-cursor::after {
+        content: "";
+        position: absolute;
+        inset: -10px;
+        border: 1px solid rgba(40, 31, 20, 0.22);
+        border-radius: 50%;
+      }
+
+      .demo-cursor.is-clicking {
+        background: #f08b62;
+        box-shadow: 0 0 0 10px rgba(240, 139, 98, 0.2);
+      }
     `
   });
 
@@ -88,29 +104,58 @@ async function installDemoOverlay(page) {
   });
 }
 
-async function setDemoOverlay(page, text, x, y) {
+async function setDemoOverlay(page, text, x, y, options = {}) {
   await page.evaluate(
-    ({ text: nextText, x: nextX, y: nextY }) => {
+    ({ isClicking, scale, text: nextText, x: nextX, y: nextY }) => {
       const callout = document.querySelector(".demo-callout");
       const cursor = document.querySelector(".demo-cursor");
       if (callout) callout.textContent = nextText;
       if (cursor) {
         cursor.style.left = `${nextX}px`;
         cursor.style.top = `${nextY}px`;
+        cursor.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        cursor.classList.toggle("is-clicking", isClicking);
       }
     },
-    { text, x, y }
+    { isClicking: !!options.isClicking, scale: options.scale || 1, text, x, y }
   );
 }
 
-async function captureRepeated(page, frames, label) {
-  const basePath = path.join(FRAME_ROOT, `${label}.png`);
-  await page.screenshot({ path: basePath });
+function easeOutCubic(value) {
+  return 1 - Math.pow(1 - value, 3);
+}
 
-  for (let i = 0; i < REPEAT_FRAMES; i += 1) {
-    const nextIndex = String(frames.count).padStart(4, "0");
-    await fs.copyFile(basePath, path.join(FRAME_ROOT, `frame-${nextIndex}.png`));
-    frames.count += 1;
+async function captureFrame(page, frames) {
+  const nextIndex = String(frames.count).padStart(4, "0");
+  await page.screenshot({ path: path.join(FRAME_ROOT, `frame-${nextIndex}.png`) });
+  frames.count += 1;
+}
+
+async function holdCursor(page, frames, text, point, frameCount = HOLD_FRAMES) {
+  await setDemoOverlay(page, text, point.x, point.y);
+  for (let i = 0; i < frameCount; i += 1) {
+    await captureFrame(page, frames);
+  }
+}
+
+async function moveCursor(page, frames, text, fromPoint, toPoint) {
+  for (let i = 1; i <= MOVE_FRAMES; i += 1) {
+    const progress = easeOutCubic(i / MOVE_FRAMES);
+    const x = fromPoint.x + (toPoint.x - fromPoint.x) * progress;
+    const y = fromPoint.y + (toPoint.y - fromPoint.y) * progress;
+    await setDemoOverlay(page, text, Math.round(x), Math.round(y));
+    await captureFrame(page, frames);
+  }
+}
+
+async function clickCursor(page, frames, text, point) {
+  const scales = [0.86, 1.18, 1.04, 1];
+  for (let i = 0; i < CLICK_FRAMES; i += 1) {
+    await setDemoOverlay(page, text, point.x, point.y, {
+      isClicking: i < CLICK_FRAMES - 1,
+      scale: scales[i] || 1
+    });
+    await captureFrame(page, frames);
   }
 }
 
@@ -130,27 +175,31 @@ async function generateFrames(sampleVpkPath) {
   });
 
   const frames = { count: 0 };
+  const choosePoint = { x: 88, y: 345 };
+  const resultPoint = { x: 744, y: 545 };
+  const repackPoint = { x: 740, y: 385 };
+  const downloadPoint = { x: 730, y: 735 };
 
   try {
     await page.goto(DEMO_URL, { waitUntil: "networkidle" });
     await installDemoOverlay(page);
-    await setDemoOverlay(page, "1. Choose an existing Deadlock addon VPK.", 88, 345);
-    await captureRepeated(page, frames, "01-choose");
+    await holdCursor(page, frames, "1. Choose an existing Deadlock addon VPK.", choosePoint);
 
     await page.locator('input[type="file"]').setInputFiles(sampleVpkPath);
     await page.getByRole("heading", { name: "Ready to merge" }).waitFor({ timeout: 10000 });
-    await setDemoOverlay(page, "2. The browser checks entries and confirms the merge is safe.", 744, 545);
-    await captureRepeated(page, frames, "02-ready");
+    await moveCursor(page, frames, "2. The browser checks entries and confirms the merge is safe.", choosePoint, resultPoint);
+    await holdCursor(page, frames, "2. The browser checks entries and confirms the merge is safe.", resultPoint, 6);
 
-    await setDemoOverlay(page, "3. Repack a merged copy. The original VPK stays untouched.", 740, 385);
-    await captureRepeated(page, frames, "03-click");
+    await moveCursor(page, frames, "3. Repack a merged copy. The original VPK stays untouched.", resultPoint, repackPoint);
+    await holdCursor(page, frames, "3. Repack a merged copy. The original VPK stays untouched.", repackPoint, 4);
+    await clickCursor(page, frames, "3. Repack a merged copy. The original VPK stays untouched.", repackPoint);
     const downloadPromise = page.waitForEvent("download", { timeout: 30000 });
     await page.locator("button.primary-action").click();
     const download = await downloadPromise;
     await download.saveAs(path.join(DEMO_ROOT, await download.suggestedFilename()));
     await page.getByText("Built merged-sample-addon_dir.vpk", { exact: false }).waitFor({ timeout: 10000 });
-    await setDemoOverlay(page, "4. Download the merged VPK and place it in your addons folder.", 730, 735);
-    await captureRepeated(page, frames, "04-download");
+    await moveCursor(page, frames, "4. Download the merged VPK and place it in your addons folder.", repackPoint, downloadPoint);
+    await holdCursor(page, frames, "4. Download the merged VPK and place it in your addons folder.", downloadPoint);
   } finally {
     await browser.close();
   }
@@ -166,24 +215,24 @@ async function buildGif(frameCount) {
   run("ffmpeg", [
     "-y",
     "-framerate",
-    "8",
+    String(FRAME_RATE),
     "-i",
     framePattern,
     "-vf",
-    "fps=8,scale=860:-1:flags=lanczos,palettegen",
+    `fps=${FRAME_RATE},scale=860:-1:flags=lanczos,palettegen`,
     palettePath
   ]);
 
   run("ffmpeg", [
     "-y",
     "-framerate",
-    "8",
+    String(FRAME_RATE),
     "-i",
     framePattern,
     "-i",
     palettePath,
     "-lavfi",
-    "fps=8,scale=860:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3",
+    `fps=${FRAME_RATE},scale=860:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3`,
     OUTPUT_GIF
   ]);
 
