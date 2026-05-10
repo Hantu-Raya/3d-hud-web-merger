@@ -1,8 +1,8 @@
 # 3D HUD VPK Merger
 
-Browser-based tool for merging the compiled Deadlock 3D HUD payload into an existing addon VPK.
+Merge the compiled 3D HUD payload into a locally selected Deadlock addon VPK. Files stay on your machine.
 
-The tool reads the uploaded VPK locally in the browser. Simple non-conflicting merges happen fully client-side. Supported layout and CSS conflicts can be patched through the optional local compiler helper.
+The tool reads the selected VPK locally in the browser. Simple non-conflicting merges happen fully client-side. Supported layout and CSS conflicts can be patched through the optional local compiler helper.
 
 ## Demo
 
