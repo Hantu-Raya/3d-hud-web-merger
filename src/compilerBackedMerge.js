@@ -1,6 +1,8 @@
 import { patchHudHealthLayoutSource } from "./hudHealthPatch.js";
 import { patchHudLayoutSource } from "./hudLayoutPatch.js";
+import { patchHudHealthContainerStyleSource } from "./hudPayloadOptions.js";
 import { patchHudStyleSource } from "./hudStylePatch.js";
+import { isCssHijackBasePath } from "./cssHijackPaths.js";
 import { decompilePanoramaLayoutResource } from "./source2ResourceReader.js";
 import { decompileTextResource } from "./source2TextResource.js";
 import { createMergedFiles, findPathConflicts, normalizeVpkPath } from "./vpkMerge.js";
@@ -8,6 +10,8 @@ import { createMergedFiles, findPathConflicts, normalizeVpkPath } from "./vpkMer
 const HUD_LAYOUT_PATH = "panorama/layout/hud.vxml_c";
 const HUD_HEALTH_LAYOUT_PATH = "panorama/layout/hud_health.vxml_c";
 const HUD_HEALTH_CONTAINER_LAYOUT_PATH = "panorama/layout/hud_health_container.vxml_c";
+const HUD_HEALTH_CONTAINER_STYLE_PATH = "panorama/styles/hud_health_container.vcss_c";
+const HUD_DYNAMIC_SCRIPT_PATH = "panorama/scripts/3d_hero_dynamic.vjs_c";
 
 const SOURCE_PATH_BY_COMPILED_PATH = new Map([
   [HUD_LAYOUT_PATH, "panorama/layout/hud.xml"],
@@ -176,10 +180,42 @@ export function createCompilerBackedHudMergePlan(existingFiles, payloadFiles, op
         continue;
       }
 
+      if (path === HUD_DYNAMIC_SCRIPT_PATH) {
+        nextExistingFileByPath.set(path, payloadFile);
+        for (let index = 0; index < nextExistingFiles.length; index += 1) {
+          if (normalizeVpkPath(nextExistingFiles[index].path) === path) {
+            nextExistingFiles[index] = cloneFile(payloadFile);
+            break;
+          }
+        }
+        keptPayloadPaths.add(path);
+        patchedPaths.push(path);
+        resolvedConflicts.push(annotateConflict(
+          conflict,
+          "Existing 3D HUD runtime script will be updated to the bundled payload version",
+          "Update 3D HUD script"
+        ));
+        continue;
+      }
+
+      if (isCssHijackBasePath(path)) {
+        keptPayloadPaths.add(path);
+        resolvedConflicts.push(annotateConflict(
+          conflict,
+          "Existing base CSS hijack file will be reused instead of overwritten",
+          "Reuse existing base CSS"
+        ));
+        continue;
+      }
+
       if (isPatchableStyle(path)) {
         const existingSource = decompileTextResource(existingFile.bytes, { panoramaPrelude: true }).source;
         const payloadSource = decompileTextResource(payloadFile.bytes, { panoramaPrelude: true }).source;
-        sourcePatches.push(createSourcePatch(path, patchHudStyleSource(existingSource, payloadSource)));
+        let patchedSource = patchHudStyleSource(existingSource, payloadSource);
+        if (path === HUD_HEALTH_CONTAINER_STYLE_PATH) {
+          patchedSource = patchHudHealthContainerStyleSource(patchedSource, options.hudUiScale);
+        }
+        sourcePatches.push(createSourcePatch(path, patchedSource));
         patchedPaths.push(path);
         keptPayloadPaths.add(path);
         resolvedConflicts.push(annotateConflict(

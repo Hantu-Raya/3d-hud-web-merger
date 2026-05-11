@@ -17,6 +17,14 @@ import {
   createCompilerBackedHudMergePlan,
   finalizeCompilerBackedHudMerge
 } from "../src/compilerBackedMerge.js";
+import {
+  DEFAULT_HUD_UI_SCALE,
+  normalizeHudUiScale,
+  patchHudHealthContainerStyleSource,
+  patchHudScaleStyleSource,
+  requiresCompilerForHudUiScale
+} from "../src/hudPayloadOptions.js";
+import { decompileTextResource } from "../src/source2TextResource.js";
 import { parseVpk } from "../src/vpkReader.js";
 import { writeVpk } from "../src/vpkWriter.js";
 
@@ -29,6 +37,10 @@ const COMPILER_EXE = process.env.HUD_INJECT_SR2COMPILER || path.join(MOD_ROOT, "
 const PROJECT_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const PAYLOAD_ROOT = path.join(PROJECT_ROOT, "public", "payload", "3d-hud");
 const DEFAULT_ALLOWED_ORIGINS = ["https://hantu-raya.github.io"];
+const HUD_SCALE_COMPILED_PATH = "panorama/styles/3d_hud.vcss_c";
+const HUD_SCALE_SOURCE_PATH = "panorama/styles/3d_hud.css";
+const HUD_HEALTH_CONTAINER_STYLE_COMPILED_PATH = "panorama/styles/hud_health_container.vcss_c";
+const HUD_HEALTH_CONTAINER_STYLE_SOURCE_PATH = "panorama/styles/hud_health_container.css";
 const ALLOWED_ORIGINS = new Set(
   String(process.env.HUD_INJECT_ALLOWED_ORIGINS || DEFAULT_ALLOWED_ORIGINS.join(","))
     .split(",")
@@ -52,7 +64,7 @@ function corsHeaders(request, extra = {}) {
     ...(allowOrigin ? { "Access-Control-Allow-Origin": allowOrigin } : {}),
     ...(origin ? { Vary: "Origin" } : {}),
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,X-File-Name",
+    "Access-Control-Allow-Headers": "Content-Type,X-File-Name,X-Hud-Ui-Scale",
     "Access-Control-Expose-Headers": "Content-Disposition,X-Hud-Inject-Patched-Paths,X-Hud-Inject-Conflicts",
     ...extra
   };
@@ -200,12 +212,73 @@ async function compileSourcePatches(sourcePatches) {
   }
 }
 
-async function mergeUploadedVpk(inputBytes) {
-  const parsed = parseVpk(inputBytes);
-  const payload = await loadPayloadFromDisk();
-  const plan = createCompilerBackedHudMergePlan(parsed.files, payload.files, {
-    hudProbeSource: payload.hudProbeSource
+function findPayloadFile(payload, pathValue) {
+  const normalized = normalizePayloadPath(pathValue).toLowerCase();
+  return payload.files.find((file) => normalizePayloadPath(file.path).toLowerCase() === normalized);
+}
+
+function addHudScaleSourcePatch(plan, payload, hudUiScale) {
+  if (!requiresCompilerForHudUiScale(hudUiScale)) {
+    return plan;
+  }
+
+  const sourcePatches = [...(plan.sourcePatches || [])];
+  const patchedCompiledPaths = new Set(plan.patchedPaths || []);
+
+  addOrUpdateSourcePatch(
+    sourcePatches,
+    payload,
+    HUD_SCALE_COMPILED_PATH,
+    HUD_SCALE_SOURCE_PATH,
+    (source) => patchHudScaleStyleSource(source, hudUiScale)
+  );
+  patchedCompiledPaths.add(HUD_SCALE_COMPILED_PATH);
+
+  addOrUpdateSourcePatch(
+    sourcePatches,
+    payload,
+    HUD_HEALTH_CONTAINER_STYLE_COMPILED_PATH,
+    HUD_HEALTH_CONTAINER_STYLE_SOURCE_PATH,
+    (source) => patchHudHealthContainerStyleSource(source, hudUiScale)
+  );
+  patchedCompiledPaths.add(HUD_HEALTH_CONTAINER_STYLE_COMPILED_PATH);
+
+  return {
+    ...plan,
+    patchedPaths: [...patchedCompiledPaths],
+    sourcePatches
+  };
+}
+
+function addOrUpdateSourcePatch(sourcePatches, payload, compiledPath, sourcePath, patchSource) {
+  const normalizedCompiledPath = normalizePayloadPath(compiledPath).toLowerCase();
+  const existingPatch = sourcePatches.find((patch) => normalizePayloadPath(patch.compiledPath).toLowerCase() === normalizedCompiledPath);
+  if (existingPatch) {
+    existingPatch.source = patchSource(existingPatch.source);
+    return;
+  }
+
+  const payloadFile = findPayloadFile(payload, compiledPath);
+  if (!payloadFile) {
+    throw new Error(`3D HUD payload is missing ${compiledPath}`);
+  }
+
+  sourcePatches.push({
+    compiledPath,
+    sourcePath,
+    source: patchSource(decompileTextResource(payloadFile.bytes, { panoramaPrelude: true }).source)
   });
+}
+
+async function mergeUploadedVpkWithOptions(inputBytes, options = {}) {
+  const parsed = parseVpk(inputBytes);
+  const hudUiScale = normalizeHudUiScale(options.hudUiScale ?? DEFAULT_HUD_UI_SCALE);
+  const payload = await loadPayloadFromDisk();
+  let plan = createCompilerBackedHudMergePlan(parsed.files, payload.files, {
+    hudProbeSource: payload.hudProbeSource,
+    hudUiScale
+  });
+  plan = addHudScaleSourcePatch(plan, payload, hudUiScale);
 
   if (!plan.files || plan.blockedConflicts.length > 0) {
     const error = new Error(`Blocked by ${plan.blockedConflicts.length} unresolved conflicting path${plan.blockedConflicts.length === 1 ? "" : "s"}`);
@@ -251,8 +324,9 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "POST" && url.pathname === "/merge") {
       const uploadName = request.headers["x-file-name"] || "addon.vpk";
+      const hudUiScale = normalizeHudUiScale(request.headers["x-hud-ui-scale"]);
       const inputBytes = await readRequestBytes(request);
-      const result = await mergeUploadedVpk(inputBytes);
+      const result = await mergeUploadedVpkWithOptions(inputBytes, { hudUiScale });
       const outputName = outputFilename(uploadName);
       response.writeHead(200, corsHeaders(request, {
         "Content-Type": "application/octet-stream",

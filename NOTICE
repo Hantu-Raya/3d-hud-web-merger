@@ -1,0 +1,37 @@
+3D HUD VPK Merger
+Copyright 2026 Hantu-Raya
+
+This product includes software developed by Hantu-Raya:
+https://github.com/Hantu-Raya/3d-hud-web-merger
+
+Bundled payload
+---------------
+
+This repository includes bundled files used by the 3D HUD VPK Merger.
+
+- Compiled 3D HUD payload files in public/payload/3d-hud/ are generated from
+  Hantu-Raya/Deadlock-mods-collection main/3d hud source so the browser tool
+  can merge them into an uploaded Deadlock addon VPK.
+- panorama/scripts/3d_hero_dynamic.js is minified with Terser before the
+  Source 2 compiler wrapper emits panorama/scripts/3d_hero_dynamic.vjs_c.
+- panorama/layout/hud_health_container.vxml_c is preserved as a compiled
+  compatibility payload file because the current upstream raw 3D HUD source
+  does not include a matching layout XML file.
+- Deadlock and Source 2 names, paths, and file formats belong to their
+  respective owners. This is an unofficial fan-made tool and is not affiliated
+  with Valve.
+
+Runtime and libraries
+---------------------
+
+- Astro, React, Playwright, Terser, and npm dependencies: see each package's
+  license in package-lock.json and upstream repositories.
+- The local Source 2 compiler helper expects user-provided Deadlock mod source
+  and compiler paths at runtime. The helper does not upload VPKs to a server.
+
+Generated artifacts
+-------------------
+
+The repository should not commit Astro build output. Regenerate it with
+npm run build when needed. Regenerate the bundled 3D HUD payload with
+npm run payload:sync when upstream 3d hud source changes.

@@ -3,9 +3,18 @@
   "source": "https://github.com/Hantu-Raya/Deadlock-mods-collection/tree/main/3d%20hud",
   "sourceRepository": "Hantu-Raya/Deadlock-mods-collection",
   "sourceRef": "main",
-  "sourceCommit": "134cd71085c76b721510b6a028dad3d747aff0fb",
+  "sourceCommit": "847525c57abae4607cd8474d51f586a771d30705",
   "sourcePath": "3d hud",
+  "gameBaseVpk": "G:\\SteamLibrary\\steamapps\\common\\Deadlock\\game\\citadel\\pak01_dir.vpk",
+  "cssHijackBasePath": "panorama/styles/base/",
+  "cssHijackBaseFiles": [
+    "panorama/styles/base/citadel_status_effect.vcss_c",
+    "panorama/styles/base/hud_health.vcss_c",
+    "panorama/styles/base/hud_health_container.vcss_c",
+    "panorama/styles/base/unit_status_icons.vcss_c"
+  ],
   "compiler": "Source 2 compiler wrapper",
+  "vpkExtractor": "VPKEdit CLI",
   "scriptMinifier": "terser",
   "preservedCompiledFiles": [
     "panorama/layout/hud_health_container.vxml_c"
@@ -15,6 +24,10 @@
     "panorama/layout/hud_health_container.vxml_c",
     "panorama/layout/hud_health.vxml_c",
     "panorama/scripts/3d_hero_dynamic.vjs_c",
+    "panorama/styles/base/citadel_status_effect.vcss_c",
+    "panorama/styles/base/hud_health.vcss_c",
+    "panorama/styles/base/hud_health_container.vcss_c",
+    "panorama/styles/base/unit_status_icons.vcss_c",
     "panorama/styles/3d_hud.vcss_c",
     "panorama/styles/citadel_status_effect.vcss_c",
     "panorama/styles/hud_health.vcss_c",

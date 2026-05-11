@@ -13,6 +13,20 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { minify } from "terser";
 
+import {
+  CSS_HIJACK_STYLE_PATHS,
+  cssHijackBaseImportFor,
+  cssHijackBasePathFor,
+  isCssHijackStylePath
+} from "../src/cssHijackPaths.js";
+import { createCssHijackSource } from "../src/hudStylePatch.js";
+import {
+  DEFAULT_HUD_UI_SCALE,
+  patchHudHealthContainerStyleSource,
+  patchHudScaleStyleSource,
+  patchStatusEffectStyleSource
+} from "../src/hudPayloadOptions.js";
+
 const PROJECT_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const PAYLOAD_ROOT = path.join(PROJECT_ROOT, "public", "payload", "3d-hud");
 const DEFAULT_REPOSITORY = "Hantu-Raya/Deadlock-mods-collection";
@@ -22,6 +36,8 @@ const SOURCE_DIR = process.env.HUD_PAYLOAD_SOURCE_DIR || "3d hud";
 const DEFAULT_MOD_ROOT = "F:\\Users\\FoxOS_User\\Desktop\\Deadlock-mods-collection";
 const MOD_ROOT = process.env.HUD_INJECT_MOD_ROOT || DEFAULT_MOD_ROOT;
 const COMPILER_EXE = process.env.HUD_INJECT_SR2COMPILER || path.join(MOD_ROOT, "sr2compiler", "New folder.exe");
+const VPKEDITCLI_EXE = process.env.HUD_INJECT_VPKEDITCLI || path.join(MOD_ROOT, "vpk cli", "vpkeditcli.exe");
+const GAME_PAK01 = process.env.HUD_INJECT_GAME_PAK01 || "G:\\SteamLibrary\\steamapps\\common\\Deadlock\\game\\citadel\\pak01_dir.vpk";
 const GITHUB_API = "https://api.github.com";
 const RAW_GITHUB = "https://raw.githubusercontent.com";
 const USER_AGENT = "3d-hud-web-merger-payload-sync";
@@ -44,11 +60,13 @@ const SOURCE_FILES = [
   },
   {
     sourcePath: "panorama/styles/3d_hud.css",
-    compiledPath: "panorama/styles/3d_hud.vcss_c"
+    compiledPath: "panorama/styles/3d_hud.vcss_c",
+    patchSource: (source) => patchHudScaleStyleSource(source, DEFAULT_HUD_UI_SCALE)
   },
   {
     sourcePath: "panorama/styles/citadel_status_effect.css",
-    compiledPath: "panorama/styles/citadel_status_effect.vcss_c"
+    compiledPath: "panorama/styles/citadel_status_effect.vcss_c",
+    patchSource: patchStatusEffectStyleSource
   },
   {
     sourcePath: "panorama/styles/hud_health.css",
@@ -56,7 +74,8 @@ const SOURCE_FILES = [
   },
   {
     sourcePath: "panorama/styles/hud_health_container.css",
-    compiledPath: "panorama/styles/hud_health_container.vcss_c"
+    compiledPath: "panorama/styles/hud_health_container.vcss_c",
+    patchSource: patchHudHealthContainerStyleSource
   },
   {
     sourcePath: "panorama/styles/unit_status_icons.css",
@@ -73,6 +92,7 @@ const MANIFEST_FILES = [
   "panorama/layout/hud_health_container.vxml_c",
   "panorama/layout/hud_health.vxml_c",
   "panorama/scripts/3d_hero_dynamic.vjs_c",
+  ...CSS_HIJACK_STYLE_PATHS.map(cssHijackBasePathFor),
   "panorama/styles/3d_hud.vcss_c",
   "panorama/styles/citadel_status_effect.vcss_c",
   "panorama/styles/hud_health.vcss_c",
@@ -232,6 +252,9 @@ async function stageSource(commitSha, sourceRoot) {
     if (file.patchSource) {
       source = file.patchSource(source);
     }
+    if (isCssHijackStylePath(file.compiledPath)) {
+      source = createCssHijackSource(cssHijackBaseImportFor(file.compiledPath), source);
+    }
     if (file.minify) {
       source = await minifyJavascript(source, file.sourcePath);
     }
@@ -246,6 +269,46 @@ async function stageSource(commitSha, sourceRoot) {
   }
 
   return hudProbeSource;
+}
+
+async function extractBaseCssPayload(tempRoot) {
+  if (!existsSync(VPKEDITCLI_EXE)) {
+    throw new Error(`VPKEdit CLI not found: ${VPKEDITCLI_EXE}`);
+  }
+  if (!existsSync(GAME_PAK01)) {
+    throw new Error(`Deadlock game VPK not found: ${GAME_PAK01}`);
+  }
+
+  const outputRoot = path.join(tempRoot, "base-css");
+  await mkdir(outputRoot, { recursive: true });
+  const result = await runProcess(
+    VPKEDITCLI_EXE,
+    ["--no-progress", "--extract", "panorama/styles/", "--output", outputRoot, GAME_PAK01],
+    { timeoutMs: 300000 }
+  );
+
+  const baseFiles = [];
+  const missing = [];
+  for (const compiledPath of CSS_HIJACK_STYLE_PATHS) {
+    const fileName = path.basename(compiledPath);
+    const extractedPath = path.join(outputRoot, fileName);
+    if (!existsSync(extractedPath)) {
+      missing.push(compiledPath);
+      continue;
+    }
+    baseFiles.push({
+      compiledPath,
+      basePath: cssHijackBasePathFor(compiledPath),
+      extractedPath
+    });
+  }
+
+  if (missing.length > 0) {
+    const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+    throw new Error(`VPKEdit did not extract base CSS for ${missing.join(", ")}${output ? `\n${output}` : ""}`);
+  }
+
+  return baseFiles;
 }
 
 async function compileSource(sourceRoot) {
@@ -267,7 +330,7 @@ async function compileSource(sourceRoot) {
   return { compiledRoot, result };
 }
 
-async function copyCompiledPayload(compiledRoot) {
+async function copyCompiledPayload(compiledRoot, baseCssFiles) {
   await mkdir(PAYLOAD_ROOT, { recursive: true });
 
   for (const file of SOURCE_FILES) {
@@ -289,6 +352,12 @@ async function copyCompiledPayload(compiledRoot) {
       throw new Error(`${compiledPath} is not produced by the latest source and no existing payload copy is available`);
     }
   }
+
+  for (const baseFile of baseCssFiles) {
+    const to = localPath(PAYLOAD_ROOT, baseFile.basePath);
+    await mkdir(path.dirname(to), { recursive: true });
+    await cp(baseFile.extractedPath, to);
+  }
 }
 
 async function writePayloadMetadata(commitSha, hudProbeSource) {
@@ -300,7 +369,11 @@ async function writePayloadMetadata(commitSha, hudProbeSource) {
     sourceRef: SOURCE_REF,
     sourceCommit: commitSha,
     sourcePath: SOURCE_DIR,
+    gameBaseVpk: GAME_PAK01,
+    cssHijackBasePath: "panorama/styles/base/",
+    cssHijackBaseFiles: CSS_HIJACK_STYLE_PATHS.map(cssHijackBasePathFor),
     compiler: "Source 2 compiler wrapper",
+    vpkExtractor: "VPKEdit CLI",
     scriptMinifier: "terser",
     preservedCompiledFiles: PRESERVED_COMPILED_FILES,
     files: MANIFEST_FILES
@@ -316,11 +389,13 @@ async function main() {
   try {
     const hudProbeSource = await stageSource(commitSha, sourceRoot);
     const { compiledRoot, result } = await compileSource(sourceRoot);
-    await copyCompiledPayload(compiledRoot);
+    const baseCssFiles = await extractBaseCssPayload(tempRoot);
+    await copyCompiledPayload(compiledRoot, baseCssFiles);
     await writePayloadMetadata(commitSha, hudProbeSource);
 
     console.log(`Synced payload from ${SOURCE_REPOSITORY}@${commitSha}`);
     console.log(`Compiled ${SOURCE_FILES.length} raw source files; minified 3d_hero_dynamic.js with Terser before compile.`);
+    console.log(`Extracted ${baseCssFiles.length} Valve base CSS files from ${GAME_PAK01} with VPKEdit CLI.`);
     console.log(`Preserved ${PRESERVED_COMPILED_FILES.length} compiled compatibility file not present in upstream raw source.`);
     if (result.stdout.trim()) console.log(result.stdout.trim());
     if (result.stderr.trim()) console.error(result.stderr.trim());

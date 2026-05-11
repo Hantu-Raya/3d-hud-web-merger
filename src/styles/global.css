@@ -266,6 +266,53 @@ h2 {
   max-width: 64ch;
 }
 
+.related-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.related-tools-label {
+  color: var(--faint);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.related-tool-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1;
+  text-decoration: none;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.related-tool-button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.related-tool-button:active {
+  transform: scale(0.98);
+}
+
+.related-tool-button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
 .hero-actions {
   display: grid;
   grid-template-rows: auto auto 1fr;
@@ -538,6 +585,53 @@ h2 {
   background: var(--button-mark-bg);
   font-family: "Geist Mono", "SF Mono", Consolas, monospace;
   font-size: 1.1rem;
+}
+
+.scale-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 34%);
+  gap: 16px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.scale-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.scale-label {
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 760;
+}
+
+.scale-help {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.scale-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px;
+  gap: 12px;
+  align-items: center;
+}
+
+.scale-input-row input {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.scale-input-row strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .action-help {
@@ -855,6 +949,7 @@ h2 {
   .hero-panel,
   .command-main,
   .result-heading,
+  .scale-control,
   .summary-grid {
     grid-template-columns: 1fr;
   }

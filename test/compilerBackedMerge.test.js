@@ -56,6 +56,7 @@ const payloadFiles = [
   layoutFile("panorama/layout/hud_health_container.vxml_c", "<root><Panel id=\"PayloadContainer\" /></root>"),
   textFile("panorama/scripts/3d_hero_dynamic.vjs_c", "script"),
   compiledStyle("panorama/styles/3d_hud.vcss_c", ".three-d{visibility: visible;}"),
+  compiledStyle("panorama/styles/base/hud_health_container.vcss_c", ".base_health{opacity: 1;}"),
   compiledStyle("panorama/styles/hud_health.vcss_c", ".hp_custom_text{visibility: visible;}"),
   compiledStyle("panorama/styles/hud_health_container.vcss_c", "#HealthBarContent{opacity: 1;}"),
   compiledStyle("panorama/styles/citadel_status_effect.vcss_c", "CitadelStatusEffect{height: 250px;}"),
@@ -135,6 +136,113 @@ test("compiler-backed plan patches supported CSS conflicts as source for the rea
   assert.match(plan.sourcePatches[0].source, /\.three-d/);
   assert.match(plan.sourcePatches[1].source, /\.existing_icons/);
   assert.match(plan.sourcePatches[1].source, /\.unit_status/);
+});
+
+test("compiler-backed plan enforces required health container positioning on CSS conflicts", () => {
+  const existingFiles = [
+    compiledStyle("panorama/styles/hud_health_container.vcss_c", [
+      "#HealthRegenAndTotal{",
+      "  margin-right: -100px;",
+      "}",
+      "#RecentHealContainer,.recentHealCounters{",
+      "  horizontal-align: right;",
+      "  height: 46px;",
+      "}",
+      "#RecentDamageContainer,.recentDamageCounters{",
+      "  horizontal-align: right;",
+      "  height: 46px;",
+      "}"
+    ].join("\n"))
+  ];
+
+  const plan = createCompilerBackedHudMergePlan(existingFiles, payloadFiles, {
+    hudProbeSource: '<Panel id="ThreeDHeroHudProbe" />',
+    hudUiScale: 170
+  });
+
+  const patch = plan.sourcePatches.find((entry) => entry.sourcePath === "panorama/styles/hud_health_container.css");
+  assert.equal(plan.blockedConflicts.length, 0);
+  assert.ok(patch);
+  assert.match(patch.source, /#HealthRegenAndTotal\s*\{[\s\S]*margin-right:\s*20px;/);
+  assert.match(patch.source, /#RecentHealContainer\s*,\s*\.recentHealCounters\s*\{[\s\S]*horizontal-align:\s*middle;/);
+  assert.match(patch.source, /#RecentHealContainer\s*,\s*\.recentHealCounters\s*\{[\s\S]*margin-right:\s*86px;/);
+  assert.match(patch.source, /#RecentHealContainer\s*,\s*\.recentHealCounters\s*\{[\s\S]*margin-top:\s*-36px;/);
+  assert.match(patch.source, /#RecentHealContainer\s*,\s*\.recentHealCounters\s*\{[\s\S]*height:\s*96px;/);
+  assert.match(patch.source, /#RecentDamageContainer\s*,\s*\.recentDamageCounters\s*\{[\s\S]*horizontal-align:\s*middle;/);
+  assert.match(patch.source, /#RecentDamageContainer\s*,\s*\.recentDamageCounters\s*\{[\s\S]*margin-right:\s*-158px;/);
+  assert.match(patch.source, /#RecentDamageContainer\s*,\s*\.recentDamageCounters\s*\{[\s\S]*margin-top:\s*-36px;/);
+  assert.match(patch.source, /#RecentDamageContainer\s*,\s*\.recentDamageCounters\s*\{[\s\S]*height:\s*96px;/);
+});
+
+test("compiler-backed plan reuses existing CSS hijack base files", () => {
+  const existingFiles = [
+    compiledStyle("panorama/styles/base/hud_health_container.vcss_c", ".user_base{opacity: 1;}")
+  ];
+
+  const plan = createCompilerBackedHudMergePlan(existingFiles, payloadFiles, {
+    hudProbeSource: '<Panel id="ThreeDHeroHudProbe" />'
+  });
+
+  assert.equal(plan.blockedConflicts.length, 0);
+  assert.equal(plan.files.filter((file) => file.path === "panorama/styles/base/hud_health_container.vcss_c").length, 1);
+  assert.equal(
+    plan.conflicts.find((conflict) => conflict.path === "panorama/styles/base/hud_health_container.vcss_c")?.resolution,
+    "Reuse existing base CSS"
+  );
+});
+
+test("compiler-backed plan updates existing 3D HUD runtime script", () => {
+  const existingFiles = [
+    textFile("panorama/scripts/3d_hero_dynamic.vjs_c", "old script")
+  ];
+
+  const plan = createCompilerBackedHudMergePlan(existingFiles, payloadFiles, {
+    hudProbeSource: '<Panel id="ThreeDHeroHudProbe" />'
+  });
+
+  const script = plan.files.find((file) => file.path === "panorama/scripts/3d_hero_dynamic.vjs_c");
+  assert.equal(plan.blockedConflicts.length, 0);
+  assert.deepEqual([...script.bytes], [...encoder.encode("script")]);
+  assert.equal(
+    plan.conflicts.find((conflict) => conflict.path === "panorama/scripts/3d_hero_dynamic.vjs_c")?.resolution,
+    "Update 3D HUD script"
+  );
+});
+
+test("browser plan reuses existing CSS hijack base files", () => {
+  const existingFiles = [
+    compiledStyle("panorama/styles/base/hud_health_container.vcss_c", ".user_base{opacity: 1;}"),
+    textFile("panorama/scripts/user_feature.vjs_c", "user")
+  ];
+
+  const plan = resolveHudPayloadConflicts(existingFiles, payloadFiles, {
+    hudProbeSource: '<Panel id="ThreeDHeroHudProbe" />'
+  });
+
+  assert.equal(plan.blockedConflicts.length, 0);
+  assert.equal(plan.files.filter((file) => file.path === "panorama/styles/base/hud_health_container.vcss_c").length, 1);
+  assert.equal(
+    plan.conflicts.find((conflict) => conflict.path === "panorama/styles/base/hud_health_container.vcss_c")?.resolution,
+    "Reuse existing base CSS"
+  );
+});
+
+test("browser plan updates existing 3D HUD runtime script", () => {
+  const existingFiles = [
+    textFile("panorama/scripts/3d_hero_dynamic.vjs_c", "old script")
+  ];
+
+  const plan = resolveHudPayloadConflicts(existingFiles, payloadFiles, {
+    hudProbeSource: '<Panel id="ThreeDHeroHudProbe" />'
+  });
+
+  const script = plan.files.find((file) => file.path === "panorama/scripts/3d_hero_dynamic.vjs_c");
+  assert.equal(plan.blockedConflicts.length, 0);
+  assert.deepEqual([...script.bytes], [...encoder.encode("script")]);
+  assert.equal(
+    plan.conflicts.find((conflict) => conflict.path === "panorama/scripts/3d_hero_dynamic.vjs_c")?.resolution,
+    "Update 3D HUD script"
+  );
 });
 
 test("finalizeCompilerBackedHudMerge replaces patched paths with compiled outputs", () => {

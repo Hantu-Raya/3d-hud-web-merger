@@ -4,7 +4,6 @@ import test from "node:test";
 
 import { resolveHudPayloadConflicts } from "../src/hudConflictResolver.js";
 import { decompilePanoramaLayoutResource } from "../src/source2ResourceReader.js";
-import { decompileTextResource } from "../src/source2TextResource.js";
 import { compilePanoramaLayoutResource } from "../src/source2ResourceWriter.js";
 import { parseVpk } from "../src/vpkReader.js";
 import { writeVpk } from "../src/vpkWriter.js";
@@ -142,7 +141,7 @@ test("resolveHudPayloadConflicts patches hud_health.vxml_c by preserving user sc
   assert.equal(result.files.filter((file) => file.path === "panorama/layout/hud_health.vxml_c").length, 1);
 });
 
-test("resolveHudPayloadConflicts patches supported vcss conflicts by appending payload CSS", () => {
+test("resolveHudPayloadConflicts sends supported vcss conflicts to compiler-backed patching", () => {
   const existingFiles = [
     textFile("panorama/styles/hud_health.vcss_c", ".existing_health{color: red;}")
   ];
@@ -151,14 +150,10 @@ test("resolveHudPayloadConflicts patches supported vcss conflicts by appending p
     hudProbeSource: '<Panel id="ThreeDHeroHudProbe" />'
   });
 
-  assert.equal(result.blockedConflicts.length, 0);
-  assert.deepEqual(result.patchedPaths, ["panorama/styles/hud_health.vcss_c"]);
-
-  const patchedStyle = result.files.find((file) => file.path === "panorama/styles/hud_health.vcss_c");
-  const text = decompileTextResource(patchedStyle.bytes).source;
-  assert.match(text, /\.existing_health/);
-  assert.match(text, /hp_custom_text/);
-  assert.equal(result.files.filter((file) => file.path === "panorama/styles/hud_health.vcss_c").length, 1);
+  assert.equal(result.files, null);
+  assert.equal(result.blockedConflicts.length, 1);
+  assert.equal(result.blockedConflicts[0].path, "panorama/styles/hud_health.vcss_c");
+  assert.match(result.blockedConflicts[0].reason, /compiler-backed patching/i);
 });
 
 test("resolveHudPayloadConflicts blocks layout conflicts by default to avoid DATA-only vxml_c output", () => {

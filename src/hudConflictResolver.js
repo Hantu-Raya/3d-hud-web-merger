@@ -1,14 +1,13 @@
 import { patchHudHealthLayoutSource } from "./hudHealthPatch.js";
 import { patchHudLayoutSource } from "./hudLayoutPatch.js";
-import { patchHudStyleSource } from "./hudStylePatch.js";
+import { isCssHijackBasePath } from "./cssHijackPaths.js";
 import { decompilePanoramaLayoutResource } from "./source2ResourceReader.js";
-import { decompileTextResource } from "./source2TextResource.js";
 import { compilePanoramaLayoutResource } from "./source2ResourceWriter.js";
-import { compileTextResource } from "./source2ResourceWriter.js";
 import { createMergedFiles, findPathConflicts, normalizeVpkPath } from "./vpkMerge.js";
 
 const HUD_LAYOUT_PATH = "panorama/layout/hud.vxml_c";
 const HUD_HEALTH_LAYOUT_PATH = "panorama/layout/hud_health.vxml_c";
+const HUD_DYNAMIC_SCRIPT_PATH = "panorama/scripts/3d_hero_dynamic.vjs_c";
 const PATCHABLE_STYLE_PATHS = new Set([
   "panorama/styles/citadel_status_effect.vcss_c",
   "panorama/styles/hud_health.vcss_c",
@@ -28,6 +27,10 @@ function isHudLayout(path) {
 
 function isHudHealthLayout(path) {
   return normalizeVpkPath(path) === HUD_HEALTH_LAYOUT_PATH;
+}
+
+function isHudDynamicScript(path) {
+  return normalizeVpkPath(path) === HUD_DYNAMIC_SCRIPT_PATH;
 }
 
 function isPatchableStyle(path) {
@@ -115,12 +118,24 @@ export function resolveHudPayloadConflicts(existingFiles, payloadFiles, options 
   let hudHealthConflicts = [];
   const styleConflicts = [];
   const blockedConflicts = [];
+  const reusedBaseCssConflicts = [];
+  const reusedBaseCssPaths = new Set();
+  const scriptConflicts = [];
 
   for (const conflict of activeConflicts) {
     if (isHudLayout(conflict.path)) {
       hudConflicts.push(conflict);
     } else if (isHudHealthLayout(conflict.path)) {
       hudHealthConflicts.push(conflict);
+    } else if (isHudDynamicScript(conflict.path)) {
+      scriptConflicts.push(conflict);
+    } else if (isCssHijackBasePath(conflict.path)) {
+      reusedBaseCssPaths.add(normalizeVpkPath(conflict.path));
+      reusedBaseCssConflicts.push(annotateConflict(
+        conflict,
+        "Existing base CSS hijack file will be reused instead of overwritten",
+        "Reuse existing base CSS"
+      ));
     } else if (isPatchableStyle(conflict.path)) {
       styleConflicts.push(conflict);
     } else {
@@ -140,6 +155,25 @@ export function resolveHudPayloadConflicts(existingFiles, payloadFiles, options 
   let nextExistingFileByPath = createFileMap(nextExistingFiles);
   const patchedPaths = [];
   const resolvedConflicts = [];
+
+  for (const conflict of scriptConflicts) {
+    const payloadScript = payloadFileByPath.get(HUD_DYNAMIC_SCRIPT_PATH);
+    if (!payloadScript) {
+      blockedConflicts.push(annotateConflict(
+        conflict,
+        "3D HUD runtime script payload entry was not found after conflict detection"
+      ));
+      continue;
+    }
+    nextExistingFiles = replaceFileBytes(nextExistingFiles, HUD_DYNAMIC_SCRIPT_PATH, cloneFile(payloadScript).bytes);
+    nextExistingFileByPath = createFileMap(nextExistingFiles);
+    patchedPaths.push(HUD_DYNAMIC_SCRIPT_PATH);
+    resolvedConflicts.push(annotateConflict(
+      conflict,
+      "Existing 3D HUD runtime script will be updated to the bundled payload version",
+      "Update 3D HUD script"
+    ));
+  }
 
   if (hudConflicts.length > 0) {
     const existingHud = nextExistingFileByPath.get(HUD_LAYOUT_PATH);
@@ -201,42 +235,15 @@ export function resolveHudPayloadConflicts(existingFiles, payloadFiles, options 
     }
   }
 
-  for (const styleConflict of styleConflicts) {
-    const stylePath = normalizeVpkPath(styleConflict.path);
-    const existingStyle = nextExistingFileByPath.get(stylePath);
-    const payloadStyle = payloadFileByPath.get(stylePath);
-    if (!existingStyle || !payloadStyle) {
-      blockedConflicts.push(annotateConflict(
-        styleConflict,
-        "Existing or payload style entry was not found after conflict detection"
-      ));
-      continue;
-    }
-
-    try {
-      const existingSource = decompileTextResource(existingStyle.bytes, { panoramaPrelude: true }).source;
-      const payloadSource = decompileTextResource(payloadStyle.bytes, { panoramaPrelude: true }).source;
-      const patchedSource = patchHudStyleSource(existingSource, payloadSource);
-      nextExistingFiles = replaceFileBytes(nextExistingFiles, stylePath, compileTextResource(patchedSource));
-      nextExistingFileByPath = createFileMap(nextExistingFiles);
-      patchedPaths.push(stylePath);
-      resolvedConflicts.push(annotateConflict(
-        styleConflict,
-        "Existing CSS can be preserved and extended with the 3D HUD CSS needed for this file",
-        "Patch existing style"
-      ));
-    } catch (error) {
-      blockedConflicts.push(annotateConflict(
-        styleConflict,
-        `Cannot patch existing style: ${error?.message || String(error)}`
-      ));
-    }
-  }
+  blockedConflicts.push(...annotateConflicts(
+    styleConflicts,
+    "Compiled CSS conflicts require compiler-backed patching; browser vcss_c output is disabled because Deadlock requires real Source 2 CSS resource blocks"
+  ));
 
   if (blockedConflicts.length > 0) {
     return {
       files: null,
-      conflicts: [...resolvedConflicts, ...alreadyPresentConflicts, ...blockedConflicts],
+      conflicts: [...resolvedConflicts, ...alreadyPresentConflicts, ...reusedBaseCssConflicts, ...blockedConflicts],
       blockedConflicts,
       patchedPaths
     };
@@ -245,14 +252,15 @@ export function resolveHudPayloadConflicts(existingFiles, payloadFiles, options 
   const patchedPathSet = new Set(patchedPaths);
   const payloadWithoutPatchedHud = [];
   for (const file of payloadWithoutIdenticalConflicts) {
-    if (!patchedPathSet.has(normalizeVpkPath(file.path))) {
+    const normalizedPath = normalizeVpkPath(file.path);
+    if (!patchedPathSet.has(normalizedPath) && !reusedBaseCssPaths.has(normalizedPath)) {
       payloadWithoutPatchedHud.push(cloneFile(file));
     }
   }
 
   return {
     files: createMergedFiles(nextExistingFiles, payloadWithoutPatchedHud),
-    conflicts: [...resolvedConflicts, ...alreadyPresentConflicts],
+    conflicts: [...resolvedConflicts, ...alreadyPresentConflicts, ...reusedBaseCssConflicts],
     blockedConflicts: [],
     patchedPaths
   };
