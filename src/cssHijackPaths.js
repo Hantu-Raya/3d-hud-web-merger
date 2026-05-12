@@ -28,10 +28,6 @@ export function isCssHijackBasePath(path) {
   return CSS_HIJACK_BASE_SET.has(normalizeVpkPath(path));
 }
 
-export function hasCssHijackBaseFolder(files) {
-  return (files || []).some((file) => normalizeVpkPath(file.path).startsWith(CSS_HIJACK_BASE_PREFIX));
-}
-
 export function cssHijackBaseImportFor(path) {
   const basePath = cssHijackBasePathFor(path);
   if (!basePath) return "";

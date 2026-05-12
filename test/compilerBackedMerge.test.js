@@ -174,7 +174,7 @@ test("compiler-backed plan enforces required health container positioning on CSS
   assert.match(patch.source, /#RecentDamageContainer\s*,\s*\.recentDamageCounters\s*\{[\s\S]*height:\s*96px;/);
 });
 
-test("compiler-backed plan reuses existing CSS hijack base files", () => {
+test("compiler-backed plan updates existing CSS hijack base files from the payload", () => {
   const existingFiles = [
     compiledStyle("panorama/styles/base/hud_health_container.vcss_c", ".user_base{opacity: 1;}")
   ];
@@ -183,11 +183,15 @@ test("compiler-backed plan reuses existing CSS hijack base files", () => {
     hudProbeSource: '<Panel id="ThreeDHeroHudProbe" />'
   });
 
+  const baseCss = plan.files.find((file) => file.path === "panorama/styles/base/hud_health_container.vcss_c");
+  const payloadBaseCss = payloadFiles.find((file) => file.path === "panorama/styles/base/hud_health_container.vcss_c");
   assert.equal(plan.blockedConflicts.length, 0);
   assert.equal(plan.files.filter((file) => file.path === "panorama/styles/base/hud_health_container.vcss_c").length, 1);
+  assert.deepEqual([...baseCss.bytes], [...payloadBaseCss.bytes]);
+  assert.deepEqual(plan.patchedPaths, ["panorama/styles/base/hud_health_container.vcss_c"]);
   assert.equal(
     plan.conflicts.find((conflict) => conflict.path === "panorama/styles/base/hud_health_container.vcss_c")?.resolution,
-    "Reuse existing base CSS"
+    "Update SteamTracking base CSS"
   );
 });
 
@@ -209,7 +213,7 @@ test("compiler-backed plan updates existing 3D HUD runtime script", () => {
   );
 });
 
-test("browser plan reuses existing CSS hijack base files", () => {
+test("browser plan updates existing CSS hijack base files from the payload", () => {
   const existingFiles = [
     compiledStyle("panorama/styles/base/hud_health_container.vcss_c", ".user_base{opacity: 1;}"),
     textFile("panorama/scripts/user_feature.vjs_c", "user")
@@ -219,11 +223,15 @@ test("browser plan reuses existing CSS hijack base files", () => {
     hudProbeSource: '<Panel id="ThreeDHeroHudProbe" />'
   });
 
+  const baseCss = plan.files.find((file) => file.path === "panorama/styles/base/hud_health_container.vcss_c");
+  const payloadBaseCss = payloadFiles.find((file) => file.path === "panorama/styles/base/hud_health_container.vcss_c");
   assert.equal(plan.blockedConflicts.length, 0);
   assert.equal(plan.files.filter((file) => file.path === "panorama/styles/base/hud_health_container.vcss_c").length, 1);
+  assert.deepEqual([...baseCss.bytes], [...payloadBaseCss.bytes]);
+  assert.deepEqual(plan.patchedPaths, ["panorama/styles/base/hud_health_container.vcss_c"]);
   assert.equal(
     plan.conflicts.find((conflict) => conflict.path === "panorama/styles/base/hud_health_container.vcss_c")?.resolution,
-    "Reuse existing base CSS"
+    "Update SteamTracking base CSS"
   );
 });
 

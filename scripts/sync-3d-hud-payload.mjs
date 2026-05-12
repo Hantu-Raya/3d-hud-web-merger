@@ -33,11 +33,13 @@ const DEFAULT_REPOSITORY = "Hantu-Raya/Deadlock-mods-collection";
 const SOURCE_REPOSITORY = process.env.HUD_PAYLOAD_SOURCE_REPOSITORY || DEFAULT_REPOSITORY;
 const SOURCE_REF = process.env.HUD_PAYLOAD_SOURCE_REF || "main";
 const SOURCE_DIR = process.env.HUD_PAYLOAD_SOURCE_DIR || "3d hud";
+const DEFAULT_BASE_REPOSITORY = "SteamTracking/GameTracking-Deadlock";
+const BASE_REPOSITORY = process.env.HUD_BASE_SOURCE_REPOSITORY || DEFAULT_BASE_REPOSITORY;
+const BASE_REF = process.env.HUD_BASE_SOURCE_REF || "master";
+const BASE_SOURCE_DIR = process.env.HUD_BASE_SOURCE_DIR || "game/citadel/pak01_dir/panorama/styles";
 const DEFAULT_MOD_ROOT = "F:\\Users\\FoxOS_User\\Desktop\\Deadlock-mods-collection";
 const MOD_ROOT = process.env.HUD_INJECT_MOD_ROOT || DEFAULT_MOD_ROOT;
 const COMPILER_EXE = process.env.HUD_INJECT_SR2COMPILER || path.join(MOD_ROOT, "sr2compiler", "New folder.exe");
-const VPKEDITCLI_EXE = process.env.HUD_INJECT_VPKEDITCLI || path.join(MOD_ROOT, "vpk cli", "vpkeditcli.exe");
-const GAME_PAK01 = process.env.HUD_INJECT_GAME_PAK01 || "G:\\SteamLibrary\\steamapps\\common\\Deadlock\\game\\citadel\\pak01_dir.vpk";
 const GITHUB_API = "https://api.github.com";
 const RAW_GITHUB = "https://raw.githubusercontent.com";
 const USER_AGENT = "3d-hud-web-merger-payload-sync";
@@ -86,6 +88,15 @@ const SOURCE_FILES = [
 const PRESERVED_COMPILED_FILES = [
   "panorama/layout/hud_health_container.vxml_c"
 ];
+
+const BASE_CSS_FILES = CSS_HIJACK_STYLE_PATHS.map((compiledPath) => {
+  const cssFileName = path.basename(compiledPath).replace(/\.vcss_c$/i, ".css");
+  return {
+    sourcePath: `panorama/styles/base/${cssFileName}`,
+    compiledPath: cssHijackBasePathFor(compiledPath),
+    upstreamPath: `${BASE_SOURCE_DIR}/${cssFileName}`
+  };
+});
 
 const MANIFEST_FILES = [
   "panorama/layout/hud.vxml_c",
@@ -141,16 +152,20 @@ async function fetchText(url) {
   return await response.text();
 }
 
-async function resolveSourceCommit() {
-  const commit = await fetchJson(`${GITHUB_API}/repos/${SOURCE_REPOSITORY}/commits/${encodeURIComponent(SOURCE_REF)}`);
+async function resolveRepositoryCommit(repository, ref) {
+  const commit = await fetchJson(`${GITHUB_API}/repos/${repository}/commits/${encodeURIComponent(ref)}`);
   if (!commit?.sha) {
-    throw new Error(`GitHub did not return a commit SHA for ${SOURCE_REPOSITORY}@${SOURCE_REF}`);
+    throw new Error(`GitHub did not return a commit SHA for ${repository}@${ref}`);
   }
   return commit.sha;
 }
 
 async function downloadSourceFile(commitSha, sourcePath) {
   return await fetchText(joinRawUrl(SOURCE_REPOSITORY, commitSha, SOURCE_DIR, sourcePath));
+}
+
+async function downloadBaseCssFile(baseCommitSha, upstreamPath) {
+  return await fetchText(joinRawUrl(BASE_REPOSITORY, baseCommitSha, upstreamPath));
 }
 
 async function minifyJavascript(sourceText, sourcePath) {
@@ -271,44 +286,13 @@ async function stageSource(commitSha, sourceRoot) {
   return hudProbeSource;
 }
 
-async function extractBaseCssPayload(tempRoot) {
-  if (!existsSync(VPKEDITCLI_EXE)) {
-    throw new Error(`VPKEdit CLI not found: ${VPKEDITCLI_EXE}`);
+async function stageBaseCssSource(baseCommitSha, sourceRoot) {
+  for (const file of BASE_CSS_FILES) {
+    const source = await downloadBaseCssFile(baseCommitSha, file.upstreamPath);
+    const destination = localPath(sourceRoot, file.sourcePath);
+    await mkdir(path.dirname(destination), { recursive: true });
+    await writeFile(destination, source, "utf8");
   }
-  if (!existsSync(GAME_PAK01)) {
-    throw new Error(`Deadlock game VPK not found: ${GAME_PAK01}`);
-  }
-
-  const outputRoot = path.join(tempRoot, "base-css");
-  await mkdir(outputRoot, { recursive: true });
-  const result = await runProcess(
-    VPKEDITCLI_EXE,
-    ["--no-progress", "--extract", "panorama/styles/", "--output", outputRoot, GAME_PAK01],
-    { timeoutMs: 300000 }
-  );
-
-  const baseFiles = [];
-  const missing = [];
-  for (const compiledPath of CSS_HIJACK_STYLE_PATHS) {
-    const fileName = path.basename(compiledPath);
-    const extractedPath = path.join(outputRoot, fileName);
-    if (!existsSync(extractedPath)) {
-      missing.push(compiledPath);
-      continue;
-    }
-    baseFiles.push({
-      compiledPath,
-      basePath: cssHijackBasePathFor(compiledPath),
-      extractedPath
-    });
-  }
-
-  if (missing.length > 0) {
-    const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
-    throw new Error(`VPKEdit did not extract base CSS for ${missing.join(", ")}${output ? `\n${output}` : ""}`);
-  }
-
-  return baseFiles;
 }
 
 async function compileSource(sourceRoot) {
@@ -318,8 +302,11 @@ async function compileSource(sourceRoot) {
 
   const result = await runProcess(COMPILER_EXE, [sourceRoot], { timeoutMs: 300000 });
   const compiledRoot = `${sourceRoot}_compiled`;
-  const missing = SOURCE_FILES
-    .map((file) => file.compiledPath)
+  const requiredCompiledPaths = [
+    ...SOURCE_FILES.map((file) => file.compiledPath),
+    ...BASE_CSS_FILES.map((file) => file.compiledPath)
+  ];
+  const missing = requiredCompiledPaths
     .filter((compiledPath) => !existsSync(localPath(compiledRoot, compiledPath)));
 
   if (missing.length > 0) {
@@ -330,10 +317,10 @@ async function compileSource(sourceRoot) {
   return { compiledRoot, result };
 }
 
-async function copyCompiledPayload(compiledRoot, baseCssFiles) {
+async function copyCompiledPayload(compiledRoot) {
   await mkdir(PAYLOAD_ROOT, { recursive: true });
 
-  for (const file of SOURCE_FILES) {
+  for (const file of [...SOURCE_FILES, ...BASE_CSS_FILES]) {
     const from = localPath(compiledRoot, file.compiledPath);
     const to = localPath(PAYLOAD_ROOT, file.compiledPath);
     await mkdir(path.dirname(to), { recursive: true });
@@ -353,14 +340,9 @@ async function copyCompiledPayload(compiledRoot, baseCssFiles) {
     }
   }
 
-  for (const baseFile of baseCssFiles) {
-    const to = localPath(PAYLOAD_ROOT, baseFile.basePath);
-    await mkdir(path.dirname(to), { recursive: true });
-    await cp(baseFile.extractedPath, to);
-  }
 }
 
-async function writePayloadMetadata(commitSha, hudProbeSource) {
+async function writePayloadMetadata(commitSha, baseCommitSha, hudProbeSource) {
   await writeFile(path.join(PAYLOAD_ROOT, "hud-probe.xml"), `${hudProbeSource}\n`, "utf8");
   const manifest = {
     name: "3d-hud",
@@ -369,11 +351,15 @@ async function writePayloadMetadata(commitSha, hudProbeSource) {
     sourceRef: SOURCE_REF,
     sourceCommit: commitSha,
     sourcePath: SOURCE_DIR,
-    gameBaseVpk: GAME_PAK01,
+    baseSource: `https://github.com/${BASE_REPOSITORY}/tree/${BASE_REF}/${BASE_SOURCE_DIR}`,
+    baseSourceRepository: BASE_REPOSITORY,
+    baseSourceRef: BASE_REF,
+    baseSourceCommit: baseCommitSha,
+    baseSourcePath: BASE_SOURCE_DIR,
     cssHijackBasePath: "panorama/styles/base/",
     cssHijackBaseFiles: CSS_HIJACK_STYLE_PATHS.map(cssHijackBasePathFor),
     compiler: "Source 2 compiler wrapper",
-    vpkExtractor: "VPKEdit CLI",
+    baseCssSource: "SteamTracking GameTracking-Deadlock",
     scriptMinifier: "terser",
     preservedCompiledFiles: PRESERVED_COMPILED_FILES,
     files: MANIFEST_FILES
@@ -382,20 +368,22 @@ async function writePayloadMetadata(commitSha, hudProbeSource) {
 }
 
 async function main() {
-  const commitSha = await resolveSourceCommit();
+  const commitSha = await resolveRepositoryCommit(SOURCE_REPOSITORY, SOURCE_REF);
+  const baseCommitSha = await resolveRepositoryCommit(BASE_REPOSITORY, BASE_REF);
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "3d-hud-payload-"));
   const sourceRoot = path.join(tempRoot, "3d hud");
 
   try {
     const hudProbeSource = await stageSource(commitSha, sourceRoot);
+    await stageBaseCssSource(baseCommitSha, sourceRoot);
     const { compiledRoot, result } = await compileSource(sourceRoot);
-    const baseCssFiles = await extractBaseCssPayload(tempRoot);
-    await copyCompiledPayload(compiledRoot, baseCssFiles);
-    await writePayloadMetadata(commitSha, hudProbeSource);
+    await copyCompiledPayload(compiledRoot);
+    await writePayloadMetadata(commitSha, baseCommitSha, hudProbeSource);
 
     console.log(`Synced payload from ${SOURCE_REPOSITORY}@${commitSha}`);
+    console.log(`Synced base CSS from ${BASE_REPOSITORY}@${baseCommitSha}`);
     console.log(`Compiled ${SOURCE_FILES.length} raw source files; minified 3d_hero_dynamic.js with Terser before compile.`);
-    console.log(`Extracted ${baseCssFiles.length} Valve base CSS files from ${GAME_PAK01} with VPKEdit CLI.`);
+    console.log(`Compiled ${BASE_CSS_FILES.length} SteamTracking base CSS files into panorama/styles/base.`);
     console.log(`Preserved ${PRESERVED_COMPILED_FILES.length} compiled compatibility file not present in upstream raw source.`);
     if (result.stdout.trim()) console.log(result.stdout.trim());
     if (result.stderr.trim()) console.error(result.stderr.trim());

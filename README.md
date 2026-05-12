@@ -27,7 +27,7 @@ The helper listens only on `127.0.0.1` and allows the GitHub Pages origin by def
 
 ## Payload Refresh
 
-The bundled payload is generated from the latest `main/3d hud` source in:
+The bundled payload is generated from the latest custom `main/3d hud` source in:
 
 ```text
 https://github.com/Hantu-Raya/Deadlock-mods-collection/tree/main/3d%20hud
@@ -39,7 +39,13 @@ Refresh it locally with the Source 2 compiler wrapper available:
 npm run payload:sync
 ```
 
-The refresh command downloads the latest raw HUD source, minifies `panorama/scripts/3d_hero_dynamic.js` with Terser, compiles the raw files into `_c` payload files, and records the upstream commit in `public/payload/3d-hud/manifest.json`.
+The refresh command downloads the latest raw HUD source, minifies `panorama/scripts/3d_hero_dynamic.js` with Terser, downloads the current base Panorama CSS from SteamTracking/GameTracking-Deadlock, compiles everything into `_c` payload files, and records both upstream commits in `public/payload/3d-hud/manifest.json`.
+
+Base CSS comes from:
+
+```text
+https://github.com/SteamTracking/GameTracking-Deadlock/tree/master/game/citadel/pak01_dir/panorama/styles
+```
 
 ## GitHub Pages
 

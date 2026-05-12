@@ -199,11 +199,19 @@ export function createCompilerBackedHudMergePlan(existingFiles, payloadFiles, op
       }
 
       if (isCssHijackBasePath(path)) {
+        nextExistingFileByPath.set(path, payloadFile);
+        for (let index = 0; index < nextExistingFiles.length; index += 1) {
+          if (normalizeVpkPath(nextExistingFiles[index].path) === path) {
+            nextExistingFiles[index] = cloneFile(payloadFile);
+            break;
+          }
+        }
         keptPayloadPaths.add(path);
+        patchedPaths.push(path);
         resolvedConflicts.push(annotateConflict(
           conflict,
-          "Existing base CSS hijack file will be reused instead of overwritten",
-          "Reuse existing base CSS"
+          "Existing base CSS will be updated to the bundled SteamTracking version",
+          "Update SteamTracking base CSS"
         ));
         continue;
       }

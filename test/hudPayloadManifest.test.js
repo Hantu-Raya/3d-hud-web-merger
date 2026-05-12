@@ -35,9 +35,17 @@ test("3D HUD payload manifest lists unique existing compiled files", async () =>
     "panorama/styles/base/hud_health_container.vcss_c",
     "panorama/styles/base/unit_status_icons.vcss_c"
   ]);
-  assert.equal(manifest.vpkExtractor, "VPKEdit CLI");
+  assert.equal(manifest.baseSourceRepository, "SteamTracking/GameTracking-Deadlock");
+  assert.equal(manifest.baseSourceRef, "master");
+  assert.equal(manifest.baseSourcePath, "game/citadel/pak01_dir/panorama/styles");
+  assert.equal(manifest.baseCssSource, "SteamTracking GameTracking-Deadlock");
+  assert.equal(
+    manifest.baseSource,
+    "https://github.com/SteamTracking/GameTracking-Deadlock/tree/master/game/citadel/pak01_dir/panorama/styles"
+  );
   assert.equal(manifest.scriptMinifier, "terser");
   assert.match(manifest.sourceCommit, /^[0-9a-f]{40}$/);
+  assert.match(manifest.baseSourceCommit, /^[0-9a-f]{40}$/);
 
   const normalized = manifest.files.map(normalizeVpkPath);
   assert.equal(new Set(normalized).size, normalized.length);

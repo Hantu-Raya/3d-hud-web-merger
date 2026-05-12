@@ -104,7 +104,7 @@ Markdown-only changes do not require the full test suite unless they affect scri
 ## Payload Rules
 - The bundled payload lives under `public/payload/3d-hud/` and is the runtime source of truth.
 - `public/payload/3d-hud/manifest.json` must list every payload file and keep paths unique after normalization.
-- `npm run payload:sync` pulls from `Hantu-Raya/Deadlock-mods-collection`, minifies `panorama/scripts/3d_hero_dynamic.js` with Terser, compiles raw files into `_c`, preserves the compatibility `hud_health_container.vxml_c` file when needed, and records the upstream commit.
+- `npm run payload:sync` pulls the custom 3D HUD files from `Hantu-Raya/Deadlock-mods-collection`, pulls base Panorama CSS from `SteamTracking/GameTracking-Deadlock`, minifies `panorama/scripts/3d_hero_dynamic.js` with Terser, compiles raw files into `_c`, preserves the compatibility `hud_health_container.vxml_c` file when needed, and records both upstream commits.
 - If payload files change, update tests and verify the manifest integrity test.
 - Do not hand-edit compiled payload files unless the user explicitly asks and there is no safer source-based path.
 
@@ -140,12 +140,13 @@ HUD_INJECT_MAX_UPLOAD_BYTES
 HUD_INJECT_MOD_ROOT
 HUD_INJECT_3D_HUD_SOURCE
 HUD_INJECT_SR2COMPILER
-HUD_INJECT_VPKEDITCLI
-HUD_INJECT_GAME_PAK01
 HUD_INJECT_ALLOWED_ORIGINS
 HUD_PAYLOAD_SOURCE_REPOSITORY
 HUD_PAYLOAD_SOURCE_REF
 HUD_PAYLOAD_SOURCE_DIR
+HUD_BASE_SOURCE_REPOSITORY
+HUD_BASE_SOURCE_REF
+HUD_BASE_SOURCE_DIR
 PUBLIC_HUD_INJECT_HELPER_URL
 ```
 

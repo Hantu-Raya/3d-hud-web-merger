@@ -3,9 +3,13 @@
   "source": "https://github.com/Hantu-Raya/Deadlock-mods-collection/tree/main/3d%20hud",
   "sourceRepository": "Hantu-Raya/Deadlock-mods-collection",
   "sourceRef": "main",
-  "sourceCommit": "847525c57abae4607cd8474d51f586a771d30705",
+  "sourceCommit": "c3f0b62947306c3f444861ddd54415da807bca69",
   "sourcePath": "3d hud",
-  "gameBaseVpk": "G:\\SteamLibrary\\steamapps\\common\\Deadlock\\game\\citadel\\pak01_dir.vpk",
+  "baseSource": "https://github.com/SteamTracking/GameTracking-Deadlock/tree/master/game/citadel/pak01_dir/panorama/styles",
+  "baseSourceRepository": "SteamTracking/GameTracking-Deadlock",
+  "baseSourceRef": "master",
+  "baseSourceCommit": "8436e875358fba6c36debbb1d39bdc78ecf88c60",
+  "baseSourcePath": "game/citadel/pak01_dir/panorama/styles",
   "cssHijackBasePath": "panorama/styles/base/",
   "cssHijackBaseFiles": [
     "panorama/styles/base/citadel_status_effect.vcss_c",
@@ -14,7 +18,7 @@
     "panorama/styles/base/unit_status_icons.vcss_c"
   ],
   "compiler": "Source 2 compiler wrapper",
-  "vpkExtractor": "VPKEdit CLI",
+  "baseCssSource": "SteamTracking GameTracking-Deadlock",
   "scriptMinifier": "terser",
   "preservedCompiledFiles": [
     "panorama/layout/hud_health_container.vxml_c"

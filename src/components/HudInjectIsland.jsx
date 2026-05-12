@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 
 import { createCompilerBackedHudMergePlan } from "../compilerBackedMerge.js";
-import { hasCssHijackBaseFolder } from "../cssHijackPaths.js";
 import { downloadBytes } from "../download.js";
 import { resolveHudPayloadConflicts } from "../hudConflictResolver.js";
 import { loadHudPayload } from "../hudPayload.js";
@@ -294,7 +293,6 @@ export default function HudInjectIsland() {
   const activePayload = payload;
   const activePayloadStatus = activePayload ? `Payload ready: ${activePayload.files.length} files, ${formatBytes(activePayload.totalBytes)}. HUD UI scale ${hudUiScale}%.` : payloadStatus;
   const scaleRequiresCompiler = requiresCompilerForHudUiScale(hudUiScale);
-  const uploadedHasBaseCssFolder = useMemo(() => hasCssHijackBaseFolder(parsed?.files), [parsed]);
 
   const browserPlan = useMemo(() => {
     if (!parsed || !activePayload) return null;
@@ -494,7 +492,6 @@ export default function HudInjectIsland() {
         resultTitle={resultTitle}
         resultTone={resultTone}
         status={status}
-        uploadedHasBaseCssFolder={uploadedHasBaseCssFolder}
         visibleConflicts={visibleConflicts}
       />
       <PageFooter />
@@ -736,7 +733,6 @@ function ResultPanel({
   resultTitle,
   resultTone,
   status,
-  uploadedHasBaseCssFolder,
   visibleConflicts
 }) {
   const stateText = blockedConflicts.length > 0
@@ -766,9 +762,6 @@ function ResultPanel({
         <StatusLine tone={parseError ? "bad" : "neutral"}>{status}</StatusLine>
         <StatusLine tone={payload ? "good" : "warn"}>{payloadStatus}</StatusLine>
         <StatusLine tone={helperStatus.available ? "good" : "warn"}>{helperStatus.message}</StatusLine>
-        {hasScanResult && uploadedHasBaseCssFolder ? (
-          <StatusLine tone="neutral">Base CSS folder detected; exact 3D HUD base paths will be reused and missing base CSS will be added.</StatusLine>
-        ) : null}
       </div>
 
       <ConflictDetails conflicts={visibleConflicts} />

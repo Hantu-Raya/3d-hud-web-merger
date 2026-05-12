@@ -118,8 +118,7 @@ export function resolveHudPayloadConflicts(existingFiles, payloadFiles, options 
   let hudHealthConflicts = [];
   const styleConflicts = [];
   const blockedConflicts = [];
-  const reusedBaseCssConflicts = [];
-  const reusedBaseCssPaths = new Set();
+  const baseCssConflicts = [];
   const scriptConflicts = [];
 
   for (const conflict of activeConflicts) {
@@ -130,12 +129,7 @@ export function resolveHudPayloadConflicts(existingFiles, payloadFiles, options 
     } else if (isHudDynamicScript(conflict.path)) {
       scriptConflicts.push(conflict);
     } else if (isCssHijackBasePath(conflict.path)) {
-      reusedBaseCssPaths.add(normalizeVpkPath(conflict.path));
-      reusedBaseCssConflicts.push(annotateConflict(
-        conflict,
-        "Existing base CSS hijack file will be reused instead of overwritten",
-        "Reuse existing base CSS"
-      ));
+      baseCssConflicts.push(conflict);
     } else if (isPatchableStyle(conflict.path)) {
       styleConflicts.push(conflict);
     } else {
@@ -155,6 +149,26 @@ export function resolveHudPayloadConflicts(existingFiles, payloadFiles, options 
   let nextExistingFileByPath = createFileMap(nextExistingFiles);
   const patchedPaths = [];
   const resolvedConflicts = [];
+
+  for (const conflict of baseCssConflicts) {
+    const path = normalizeVpkPath(conflict.path);
+    const payloadBaseCss = payloadFileByPath.get(path);
+    if (!payloadBaseCss) {
+      blockedConflicts.push(annotateConflict(
+        conflict,
+        "SteamTracking base CSS payload entry was not found after conflict detection"
+      ));
+      continue;
+    }
+    nextExistingFiles = replaceFileBytes(nextExistingFiles, path, cloneFile(payloadBaseCss).bytes);
+    nextExistingFileByPath = createFileMap(nextExistingFiles);
+    patchedPaths.push(path);
+    resolvedConflicts.push(annotateConflict(
+      conflict,
+      "Existing base CSS will be updated to the bundled SteamTracking version",
+      "Update SteamTracking base CSS"
+    ));
+  }
 
   for (const conflict of scriptConflicts) {
     const payloadScript = payloadFileByPath.get(HUD_DYNAMIC_SCRIPT_PATH);
@@ -243,7 +257,7 @@ export function resolveHudPayloadConflicts(existingFiles, payloadFiles, options 
   if (blockedConflicts.length > 0) {
     return {
       files: null,
-      conflicts: [...resolvedConflicts, ...alreadyPresentConflicts, ...reusedBaseCssConflicts, ...blockedConflicts],
+      conflicts: [...resolvedConflicts, ...alreadyPresentConflicts, ...blockedConflicts],
       blockedConflicts,
       patchedPaths
     };
@@ -253,14 +267,14 @@ export function resolveHudPayloadConflicts(existingFiles, payloadFiles, options 
   const payloadWithoutPatchedHud = [];
   for (const file of payloadWithoutIdenticalConflicts) {
     const normalizedPath = normalizeVpkPath(file.path);
-    if (!patchedPathSet.has(normalizedPath) && !reusedBaseCssPaths.has(normalizedPath)) {
+    if (!patchedPathSet.has(normalizedPath)) {
       payloadWithoutPatchedHud.push(cloneFile(file));
     }
   }
 
   return {
     files: createMergedFiles(nextExistingFiles, payloadWithoutPatchedHud),
-    conflicts: [...resolvedConflicts, ...alreadyPresentConflicts, ...reusedBaseCssConflicts],
+    conflicts: [...resolvedConflicts, ...alreadyPresentConflicts],
     blockedConflicts: [],
     patchedPaths
   };
