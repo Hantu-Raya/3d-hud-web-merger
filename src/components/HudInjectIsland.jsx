@@ -34,7 +34,7 @@ function compilerHelperEndpoint(path) {
 function compilerHelperFetch(path, options = {}) {
   return fetch(compilerHelperEndpoint(path), {
     ...options,
-    targetAddressSpace: "local"
+    targetAddressSpace: "loopback"
   });
 }
 
