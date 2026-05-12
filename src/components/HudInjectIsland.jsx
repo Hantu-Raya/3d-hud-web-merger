@@ -31,6 +31,13 @@ function compilerHelperEndpoint(path) {
   return `${COMPILER_HELPER_URL}/${String(path || "").replace(/^\/+/, "")}`;
 }
 
+function compilerHelperFetch(path, options = {}) {
+  return fetch(compilerHelperEndpoint(path), {
+    ...options,
+    targetAddressSpace: "local"
+  });
+}
+
 function formatBytes(value) {
   const bytes = Number(value || 0);
   if (bytes < 1024) return `${bytes} B`;
@@ -166,7 +173,7 @@ function reducer(state, action) {
 }
 
 async function loadHelperStatus(signal) {
-  const response = await fetch(compilerHelperEndpoint("/health"), { signal });
+  const response = await compilerHelperFetch("/health", { signal });
   if (!response.ok) {
     throw new Error(await readErrorResponse(response));
   }
@@ -182,7 +189,7 @@ async function loadHelperStatus(signal) {
 }
 
 async function requestCompilerBackedMerge(file, options = {}) {
-  const response = await fetch(compilerHelperEndpoint("/merge"), {
+  const response = await compilerHelperFetch("/merge", {
     method: "POST",
     headers: {
       "Content-Type": "application/octet-stream",
@@ -249,7 +256,7 @@ export default function HudInjectIsland() {
         dispatch({
           type: "helperLoaded",
           available: false,
-          message: "Local compiler helper offline. Start it with npm run helper for patchable layout/CSS conflicts."
+          message: "Local compiler helper offline or blocked. Start npm run helper, then allow local network access if the browser asks."
         });
       });
     return () => controller.abort();

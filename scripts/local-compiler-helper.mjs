@@ -65,6 +65,7 @@ function corsHeaders(request, extra = {}) {
     ...(origin ? { Vary: "Origin" } : {}),
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type,X-File-Name,X-Hud-Ui-Scale",
+    "Access-Control-Allow-Private-Network": "true",
     "Access-Control-Expose-Headers": "Content-Disposition,X-Hud-Inject-Patched-Paths,X-Hud-Inject-Conflicts",
     ...extra
   };
