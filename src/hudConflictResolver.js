@@ -1,13 +1,10 @@
-import { patchHudHealthLayoutSource } from "./hudHealthPatch.js";
-import { patchHudLayoutSource } from "./hudLayoutPatch.js";
 import { isCssHijackBasePath } from "./cssHijackPaths.js";
-import { decompilePanoramaLayoutResource } from "./source2ResourceReader.js";
-import { compilePanoramaLayoutResource } from "./source2ResourceWriter.js";
 import { createMergedFiles, findPathConflicts, normalizeVpkPath } from "./vpkMerge.js";
 
 const HUD_LAYOUT_PATH = "panorama/layout/hud.vxml_c";
 const HUD_HEALTH_LAYOUT_PATH = "panorama/layout/hud_health.vxml_c";
 const HUD_DYNAMIC_SCRIPT_PATH = "panorama/scripts/3d_hero_dynamic.vjs_c";
+const LAYOUT_CONFLICT_REASON = "Compiled layout conflicts require compiler-backed layout patching; browser DATA-only vxml_c output is disabled because it can crash Deadlock";
 const PATCHABLE_STYLE_PATHS = new Set([
   "panorama/styles/citadel_status_effect.vcss_c",
   "panorama/styles/hud_health.vcss_c",
@@ -74,7 +71,7 @@ function replaceFileBytes(files, path, bytes) {
   ));
 }
 
-export function resolveHudPayloadConflicts(existingFiles, payloadFiles, options = {}) {
+export function resolveHudPayloadConflicts(existingFiles, payloadFiles) {
   const conflicts = findPathConflicts(existingFiles, payloadFiles);
   const existingFileByPath = createFileMap(existingFiles);
   const payloadFileByPath = createFileMap(payloadFiles);
@@ -114,18 +111,14 @@ export function resolveHudPayloadConflicts(existingFiles, payloadFiles, options 
     };
   }
 
-  let hudConflicts = [];
-  let hudHealthConflicts = [];
   const styleConflicts = [];
   const blockedConflicts = [];
   const baseCssConflicts = [];
   const scriptConflicts = [];
 
   for (const conflict of activeConflicts) {
-    if (isHudLayout(conflict.path)) {
-      hudConflicts.push(conflict);
-    } else if (isHudHealthLayout(conflict.path)) {
-      hudHealthConflicts.push(conflict);
+    if (isHudLayout(conflict.path) || isHudHealthLayout(conflict.path)) {
+      blockedConflicts.push(annotateConflict(conflict, LAYOUT_CONFLICT_REASON));
     } else if (isHudDynamicScript(conflict.path)) {
       scriptConflicts.push(conflict);
     } else if (isCssHijackBasePath(conflict.path)) {
@@ -137,16 +130,7 @@ export function resolveHudPayloadConflicts(existingFiles, payloadFiles, options 
     }
   }
 
-  if (!options.allowDataLayoutPatching && (hudConflicts.length > 0 || hudHealthConflicts.length > 0)) {
-    const layoutReason = "Compiled layout conflicts require compiler-backed layout patching; browser DATA-only vxml_c output is disabled because it can crash Deadlock";
-    blockedConflicts.push(...annotateConflicts(hudConflicts, layoutReason));
-    blockedConflicts.push(...annotateConflicts(hudHealthConflicts, layoutReason));
-    hudConflicts = [];
-    hudHealthConflicts = [];
-  }
-
   let nextExistingFiles = (existingFiles || []).map(cloneFile);
-  let nextExistingFileByPath = createFileMap(nextExistingFiles);
   const patchedPaths = [];
   const resolvedConflicts = [];
 
@@ -161,7 +145,6 @@ export function resolveHudPayloadConflicts(existingFiles, payloadFiles, options 
       continue;
     }
     nextExistingFiles = replaceFileBytes(nextExistingFiles, path, cloneFile(payloadBaseCss).bytes);
-    nextExistingFileByPath = createFileMap(nextExistingFiles);
     patchedPaths.push(path);
     resolvedConflicts.push(annotateConflict(
       conflict,
@@ -180,73 +163,12 @@ export function resolveHudPayloadConflicts(existingFiles, payloadFiles, options 
       continue;
     }
     nextExistingFiles = replaceFileBytes(nextExistingFiles, HUD_DYNAMIC_SCRIPT_PATH, cloneFile(payloadScript).bytes);
-    nextExistingFileByPath = createFileMap(nextExistingFiles);
     patchedPaths.push(HUD_DYNAMIC_SCRIPT_PATH);
     resolvedConflicts.push(annotateConflict(
       conflict,
       "Existing 3D HUD runtime script will be updated to the bundled payload version",
       "Update 3D HUD script"
     ));
-  }
-
-  if (hudConflicts.length > 0) {
-    const existingHud = nextExistingFileByPath.get(HUD_LAYOUT_PATH);
-    if (!existingHud) {
-      blockedConflicts.push(annotateConflict(
-        hudConflicts[0],
-        "Existing hud.vxml_c entry was not found after conflict detection"
-      ));
-    } else {
-      try {
-        const { source } = decompilePanoramaLayoutResource(existingHud.bytes);
-        const patchedSource = patchHudLayoutSource(source, options.hudProbeSource);
-        const patchedBytes = compilePanoramaLayoutResource(patchedSource);
-        nextExistingFiles = replaceFileBytes(nextExistingFiles, HUD_LAYOUT_PATH, patchedBytes);
-        nextExistingFileByPath = createFileMap(nextExistingFiles);
-        patchedPaths.push(HUD_LAYOUT_PATH);
-        resolvedConflicts.push(...annotateConflicts(
-          hudConflicts,
-          "Existing HUD layout can be decompiled, patched, and recompiled",
-          "Patch existing layout"
-        ));
-      } catch (error) {
-        blockedConflicts.push(...annotateConflicts(
-          hudConflicts,
-          `Cannot decompile existing hud.vxml_c: ${error?.message || String(error)}`
-        ));
-      }
-    }
-  }
-
-  if (hudHealthConflicts.length > 0) {
-    const existingHudHealth = nextExistingFileByPath.get(HUD_HEALTH_LAYOUT_PATH);
-    const payloadHudHealth = payloadFileByPath.get(HUD_HEALTH_LAYOUT_PATH);
-    if (!existingHudHealth || !payloadHudHealth) {
-      blockedConflicts.push(annotateConflict(
-        hudHealthConflicts[0],
-        "Existing or payload hud_health.vxml_c entry was not found after conflict detection"
-      ));
-    } else {
-      try {
-        const existingSource = decompilePanoramaLayoutResource(existingHudHealth.bytes).source;
-        const payloadSource = decompilePanoramaLayoutResource(payloadHudHealth.bytes).source;
-        const patchedSource = patchHudHealthLayoutSource(existingSource, payloadSource);
-        const patchedBytes = compilePanoramaLayoutResource(patchedSource);
-        nextExistingFiles = replaceFileBytes(nextExistingFiles, HUD_HEALTH_LAYOUT_PATH, patchedBytes);
-        nextExistingFileByPath = createFileMap(nextExistingFiles);
-        patchedPaths.push(HUD_HEALTH_LAYOUT_PATH);
-        resolvedConflicts.push(...annotateConflicts(
-          hudHealthConflicts,
-          "Existing health layout can be decompiled, kept with user scripts, and patched with the 3D HUD health body",
-          "Patch existing health layout"
-        ));
-      } catch (error) {
-        blockedConflicts.push(...annotateConflicts(
-          hudHealthConflicts,
-          `Cannot patch existing hud_health.vxml_c: ${error?.message || String(error)}`
-        ));
-      }
-    }
   }
 
   blockedConflicts.push(...annotateConflicts(

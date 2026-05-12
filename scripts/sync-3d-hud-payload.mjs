@@ -256,7 +256,7 @@ async function runProcess(file, args, options = {}) {
   });
 }
 
-async function stageSource(commitSha, sourceRoot) {
+async function stageSource(commitSha, sourceRoot, baseCssSources = new Map()) {
   let hudProbeSource = "";
 
   for (const file of SOURCE_FILES) {
@@ -268,7 +268,11 @@ async function stageSource(commitSha, sourceRoot) {
       source = file.patchSource(source);
     }
     if (isCssHijackStylePath(file.compiledPath)) {
-      source = createCssHijackSource(cssHijackBaseImportFor(file.compiledPath), source);
+      source = createCssHijackSource(
+        cssHijackBaseImportFor(file.compiledPath),
+        source,
+        baseCssSources.get(file.compiledPath)
+      );
     }
     if (file.minify) {
       source = await minifyJavascript(source, file.sourcePath);
@@ -287,12 +291,15 @@ async function stageSource(commitSha, sourceRoot) {
 }
 
 async function stageBaseCssSource(baseCommitSha, sourceRoot) {
+  const sourcesByCompiledPath = new Map();
   for (const file of BASE_CSS_FILES) {
     const source = await downloadBaseCssFile(baseCommitSha, file.upstreamPath);
+    sourcesByCompiledPath.set(file.compiledPath.replace("/base/", "/"), source);
     const destination = localPath(sourceRoot, file.sourcePath);
     await mkdir(path.dirname(destination), { recursive: true });
     await writeFile(destination, source, "utf8");
   }
+  return sourcesByCompiledPath;
 }
 
 async function compileSource(sourceRoot) {
@@ -374,8 +381,8 @@ async function main() {
   const sourceRoot = path.join(tempRoot, "3d hud");
 
   try {
-    const hudProbeSource = await stageSource(commitSha, sourceRoot);
-    await stageBaseCssSource(baseCommitSha, sourceRoot);
+    const baseCssSources = await stageBaseCssSource(baseCommitSha, sourceRoot);
+    const hudProbeSource = await stageSource(commitSha, sourceRoot, baseCssSources);
     const { compiledRoot, result } = await compileSource(sourceRoot);
     await copyCompiledPayload(compiledRoot);
     await writePayloadMetadata(commitSha, baseCommitSha, hudProbeSource);

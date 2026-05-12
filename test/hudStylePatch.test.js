@@ -1,7 +1,70 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { patchHudStyleSource } from "../src/hudStylePatch.js";
+import { createCssDeltaSource, createCssHijackSource, patchHudStyleSource } from "../src/hudStylePatch.js";
+
+test("createCssDeltaSource keeps only changed declarations from base CSS", () => {
+  const base = [
+    "#HealthRegenAndTotal {",
+    "  width: 380px;",
+    "  margin-right: -100px;",
+    "}",
+    ".unchanged {",
+    "  opacity: 1;",
+    "}"
+  ].join("\n");
+  const override = [
+    "#HealthRegenAndTotal {",
+    "  width: 380px;",
+    "  margin-right: 20px;",
+    "}",
+    ".unchanged {",
+    "  opacity: 1;",
+    "}",
+    ".new_rule {",
+    "  visibility: visible;",
+    "}"
+  ].join("\n");
+
+  const delta = createCssDeltaSource(base, override);
+
+  assert.match(delta, /#HealthRegenAndTotal\s*\{[\s\S]*margin-right:\s*20px;/);
+  assert.doesNotMatch(delta, /width:\s*380px/);
+  assert.doesNotMatch(delta, /\.unchanged/);
+  assert.match(delta, /\.new_rule\s*\{[\s\S]*visibility:\s*visible;/);
+});
+
+test("createCssDeltaSource compares nested blocks as whole rules", () => {
+  const base = [
+    "@keyframes 'pulse' {",
+    "  0% { opacity: 0; }",
+    "  100% { opacity: 1; }",
+    "}"
+  ].join("\n");
+  const override = [
+    "@keyframes 'pulse' {",
+    "  0% { opacity: 0; }",
+    "  100% { opacity: .8; }",
+    "}"
+  ].join("\n");
+
+  const delta = createCssDeltaSource(base, override);
+
+  assert.match(delta, /@keyframes 'pulse'/);
+  assert.match(delta, /opacity:\s*\.8/);
+});
+
+test("createCssHijackSource imports base CSS before pruned overrides", () => {
+  const source = createCssHijackSource(
+    '@import url("s2r://panorama/styles/base/hud_health_container.vcss_c");',
+    "#HealthRegenAndTotal { width: 380px; margin-right: 20px; }",
+    "#HealthRegenAndTotal { width: 380px; margin-right: -100px; }"
+  );
+
+  assert.match(source, /^@import url/);
+  assert.doesNotMatch(source, /width:\s*380px/);
+  assert.match(source, /margin-right:\s*20px/);
+});
 
 test("patchHudStyleSource appends 3D HUD CSS without replacing existing CSS", () => {
   const existing = ".existing_rule{color: red;}";

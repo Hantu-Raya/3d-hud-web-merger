@@ -297,24 +297,23 @@ export default function HudInjectIsland() {
     };
   }, [isTutorialOpen]);
 
-  const activePayload = payload;
-  const activePayloadStatus = activePayload ? `Payload ready: ${activePayload.files.length} files, ${formatBytes(activePayload.totalBytes)}. HUD UI scale ${hudUiScale}%.` : payloadStatus;
+  const activePayloadStatus = payload ? `Payload ready: ${payload.files.length} files, ${formatBytes(payload.totalBytes)}. HUD UI scale ${hudUiScale}%.` : payloadStatus;
   const scaleRequiresCompiler = requiresCompilerForHudUiScale(hudUiScale);
 
   const browserPlan = useMemo(() => {
-    if (!parsed || !activePayload) return null;
-    return resolveHudPayloadConflicts(parsed.files, activePayload.files, {
-      hudProbeSource: activePayload.hudProbeSource
+    if (!parsed || !payload) return null;
+    return resolveHudPayloadConflicts(parsed.files, payload.files, {
+      hudProbeSource: payload.hudProbeSource
     });
-  }, [parsed, activePayload]);
+  }, [parsed, payload]);
 
   const compilerPlan = useMemo(() => {
-    if (!parsed || !activePayload || (browserPlan?.files && !scaleRequiresCompiler)) return null;
-    return createCompilerBackedHudMergePlan(parsed.files, activePayload.files, {
-      hudProbeSource: activePayload.hudProbeSource,
+    if (!parsed || !payload || (browserPlan?.files && !scaleRequiresCompiler)) return null;
+    return createCompilerBackedHudMergePlan(parsed.files, payload.files, {
+      hudProbeSource: payload.hudProbeSource,
       hudUiScale
     });
-  }, [parsed, activePayload, browserPlan, scaleRequiresCompiler, hudUiScale]);
+  }, [parsed, payload, browserPlan, scaleRequiresCompiler, hudUiScale]);
 
   const requiresCompilerHelper = !!compilerPlan && (!browserPlan?.files || scaleRequiresCompiler) && compilerPlan.blockedConflicts.length === 0;
   const displayPlan = requiresCompilerHelper ? compilerPlan : browserPlan;
@@ -324,7 +323,7 @@ export default function HudInjectIsland() {
   const canMerge =
     !!selectedFile &&
     !!parsed &&
-    !!activePayload &&
+    !!payload &&
     !parseError &&
     !isBusy &&
     ((!!browserPlan?.files && !scaleRequiresCompiler) || (requiresCompilerHelper && helperStatus.available));
@@ -332,7 +331,7 @@ export default function HudInjectIsland() {
   const buttonLabel = requiresCompilerHelper && !helperStatus.available
     ? "Start Helper to Patch"
     : (requiresCompilerHelper ? "Compiler Patch + Repack VPK" : (isPatchReady ? "Patch + Repack VPK" : "Repack VPK"));
-  const hasScanResult = !!parsed && !!activePayload && !parseError;
+  const hasScanResult = !!parsed && !!payload && !parseError;
   const resultTone = blockedConflicts.length > 0
     ? "danger"
     : (hasScanResult && (requiresCompilerHelper || isPatchReady) ? "patch" : (hasScanResult ? "safe" : "idle"));
@@ -408,7 +407,7 @@ export default function HudInjectIsland() {
   }
 
   async function handleBuild() {
-    if (!selectedFile || !parsed || !activePayload) return;
+    if (!selectedFile || !parsed || !payload) return;
     if (requiresCompilerHelper && !helperStatus.available) {
       dispatch({ type: "status", status: helperStatus.message });
       return;
@@ -419,8 +418,8 @@ export default function HudInjectIsland() {
       status: requiresCompilerHelper ? "Patching with local Source 2 compiler..." : "Packing merged VPK..."
     });
     try {
-      const mergePlan = resolveHudPayloadConflicts(parsed.files, activePayload.files, {
-        hudProbeSource: activePayload.hudProbeSource
+      const mergePlan = resolveHudPayloadConflicts(parsed.files, payload.files, {
+        hudProbeSource: payload.hudProbeSource
       });
       if (mergePlan.files && mergePlan.blockedConflicts.length === 0 && !scaleRequiresCompiler) {
         const bytes = writeVpk(mergePlan.files);
@@ -430,8 +429,8 @@ export default function HudInjectIsland() {
         return;
       }
 
-      const compilerMergePlan = createCompilerBackedHudMergePlan(parsed.files, activePayload.files, {
-        hudProbeSource: activePayload.hudProbeSource,
+      const compilerMergePlan = createCompilerBackedHudMergePlan(parsed.files, payload.files, {
+        hudProbeSource: payload.hudProbeSource,
         hudUiScale
       });
       if (!compilerMergePlan.files || compilerMergePlan.blockedConflicts.length > 0) {
@@ -492,7 +491,7 @@ export default function HudInjectIsland() {
         isPatchReady={isPatchReady}
         parsed={parsed}
         parseError={parseError}
-        payload={activePayload}
+        payload={payload}
         payloadStatus={activePayloadStatus}
         requiresCompilerHelper={requiresCompilerHelper}
         resultCopy={resultCopy}
