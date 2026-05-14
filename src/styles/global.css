@@ -244,6 +244,94 @@ h1 {
   text-wrap: balance;
 }
 
+.hero-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+  min-width: 0;
+}
+
+.commit-version-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  margin-bottom: 4px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--surface-muted) 76%, var(--surface));
+  color: var(--muted);
+  font-family: "Geist Mono", "SF Mono", "JetBrains Mono", Consolas, monospace;
+  font-size: 0.74rem;
+  font-weight: 780;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.commit-version-link:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.commit-version-link:active {
+  transform: scale(0.98);
+}
+
+.commit-version-link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.commit-version-link code {
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.73rem;
+}
+
+.commit-version-link::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 0;
+  top: calc(100% + 7px);
+  z-index: 5;
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 36px));
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 44%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent-soft) 72%, var(--surface));
+  color: var(--text);
+  box-shadow: 0 18px 44px rgba(70, 57, 39, 0.12);
+  font-family: "Geist Sans", "Satoshi", "Aptos", "Segoe UI Variable", system-ui, sans-serif;
+  font-size: 0.76rem;
+  font-weight: 680;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  white-space: normal;
+  transform: translateY(-3px);
+  transition:
+    opacity 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.commit-version-link:hover::after,
+.commit-version-link:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 h2 {
   color: var(--text);
   font-size: clamp(1.35rem, 2.5vw, 2.1rem);
@@ -335,12 +423,47 @@ h3 {
   gap: 8px;
 }
 
+.support-star-combo {
+  --combo-star-width: 88px;
+  --combo-slash-width: 18px;
+  --github-star-bg: #f6f8fa;
+  --github-star-bg-hover: #f3f4f6;
+  --github-star-border: #d0d7de;
+  --github-star-text: #24292f;
+  --github-star-icon: #57606a;
+  --support-combo-border: #8f642d;
+  --support-combo-bg: #24211c;
+  --support-combo-bg-hover: #f2cc60;
+  --support-combo-text: #f0f6fc;
+  --support-combo-hover-text: #24292f;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(178px, 1fr) var(--combo-star-width);
+  min-height: 44px;
+  min-width: 280px;
+  overflow: hidden;
+  border: 1px solid var(--support-combo-border);
+  border-radius: 6px;
+  background: var(--support-combo-bg);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 16%, transparent);
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.support-star-combo::after {
+  content: none;
+}
+
+.support-star-combo::before {
+  content: none;
+}
+
 .readiness {
   display: grid;
   gap: 8px;
 }
 
 .support-button,
+.star-repo-button,
 .tutorial-button {
   display: flex;
   align-items: center;
@@ -361,6 +484,42 @@ h3 {
     transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.support-star-combo .support-button,
+.support-star-combo .star-repo-button {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.support-star-combo .support-button {
+  justify-content: flex-start;
+  padding-left: 14px;
+  padding-right: calc(var(--combo-slash-width) + 12px);
+}
+
+.support-star-combo .star-repo-button {
+  justify-content: flex-end;
+  margin-left: calc(var(--combo-slash-width) * -1);
+  padding-left: calc(var(--combo-slash-width) + 14px);
+  padding-right: 14px;
+  clip-path: polygon(var(--combo-slash-width) 0, 100% 0, 100% 100%, 0 100%);
+}
+
+.support-star-combo .star-repo-button::before {
+  content: "";
+  position: absolute;
+  left: calc((var(--combo-slash-width) / 2) - 1px);
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--github-star-border);
+  pointer-events: none;
+  transform: skewX(-22deg);
+  transform-origin: center;
+}
+
 .support-button {
   border: 1px solid color-mix(in srgb, var(--support-bg) 76%, var(--border));
   background: var(--support-bg);
@@ -369,6 +528,120 @@ h3 {
 
 .support-button:hover {
   background: var(--support-hover);
+}
+
+.support-star-combo .support-button {
+  background: transparent;
+  color: var(--support-combo-text);
+}
+
+.support-star-combo .support-heart {
+  color: var(--support-combo-bg-hover);
+}
+
+.support-star-combo .support-heart path {
+  stroke: currentColor;
+}
+
+.support-star-combo .support-button:hover {
+  background: var(--support-combo-bg-hover);
+  color: var(--support-combo-hover-text);
+}
+
+.support-star-combo .support-button:hover .support-heart {
+  color: var(--support-combo-hover-text);
+}
+
+.star-repo-button {
+  border: 1px solid #57606a;
+  background: #24292f;
+  color: #f0f6fc;
+}
+
+.star-repo-button:hover {
+  border-color: #8b949e;
+  background: #30363d;
+  color: #ffffff;
+}
+
+.support-star-combo .star-repo-button {
+  background: var(--github-star-bg);
+  color: var(--github-star-text);
+}
+
+.support-star-combo .star-repo-button:visited {
+  color: var(--github-star-text);
+}
+
+.support-star-combo .star-repo-button:link,
+.support-star-combo .star-repo-button:visited,
+.support-star-combo .star-repo-button span,
+.support-star-combo .star-repo-button svg {
+  color: inherit;
+}
+
+.support-star-combo .star-icon {
+  color: var(--github-star-icon);
+}
+
+.support-star-combo .star-icon path {
+  fill: currentColor;
+}
+
+.support-star-combo .star-repo-button:hover {
+  background: var(--github-star-bg-hover);
+  color: var(--github-star-text);
+}
+
+.support-star-combo .star-repo-button:hover .star-icon {
+  color: var(--github-star-text);
+}
+
+:root[data-resolved-theme="dark"] .support-star-combo {
+  --github-star-bg: #21262d;
+  --github-star-bg-hover: #30363d;
+  --github-star-border: #30363d;
+  --github-star-text: #f0f6fc;
+  --github-star-icon: #8b949e;
+  --support-combo-border: #8f642d;
+  --support-combo-bg: #24211c;
+  --support-combo-bg-hover: #f2cc60;
+  --support-combo-text: #f0f6fc;
+  --support-combo-hover-text: #24292f;
+  border-color: var(--support-combo-border);
+  background: var(--support-combo-bg);
+}
+
+:root[data-resolved-theme="dark"] .support-star-combo::before {
+  content: none;
+}
+
+:root[data-resolved-theme="dark"] .support-star-combo::after {
+  content: none;
+}
+
+:root[data-resolved-theme="dark"] .support-star-combo .star-repo-button,
+:root[data-resolved-theme="dark"] .support-star-combo .star-repo-button:link,
+:root[data-resolved-theme="dark"] .support-star-combo .star-repo-button:visited {
+  color: var(--github-star-text);
+}
+
+:root[data-resolved-theme="dark"] .support-star-combo .support-button:hover {
+  background: var(--support-combo-bg-hover);
+  color: var(--support-combo-hover-text);
+}
+
+:root[data-resolved-theme="dark"] .support-star-combo .star-repo-button:hover {
+  background: var(--github-star-bg-hover);
+  color: var(--github-star-text);
+}
+
+:root[data-resolved-theme="dark"] .support-star-combo .star-icon {
+  color: var(--github-star-icon);
+}
+
+:root[data-resolved-theme="dark"] .support-star-combo .star-repo-button:hover .star-icon {
+  color: var(--github-star-text);
 }
 
 .tutorial-button {
@@ -383,11 +656,23 @@ h3 {
 }
 
 .support-button:active,
+.star-repo-button:active,
 .tutorial-button:active {
   transform: scale(0.98);
 }
 
+.support-star-combo:has(.support-button:active),
+.support-star-combo:has(.star-repo-button:active) {
+  transform: scale(0.98);
+}
+
+.support-star-combo .support-button:active,
+.support-star-combo .star-repo-button:active {
+  transform: none;
+}
+
 .support-button:focus-visible,
+.star-repo-button:focus-visible,
 .tutorial-button:focus-visible,
 .modal-close:focus-visible {
   outline: 2px solid var(--focus);
@@ -426,14 +711,51 @@ h3 {
   stroke: var(--heart-pink);
 }
 
+.commit-icon,
+.star-icon,
 .action-icon {
   flex: 0 0 auto;
   inline-size: 18px;
   block-size: 18px;
 }
 
+.commit-icon path,
+.star-icon path,
 .action-icon path {
   fill: currentColor;
+}
+
+.star-repo-button:hover .star-icon {
+  color: #f2cc60;
+}
+
+.star-repo-button:hover .star-icon path {
+  fill: #f2cc60;
+}
+
+.support-star-combo .support-button:hover .support-heart {
+  color: var(--heart-pink);
+  animation: heart-wiggle 560ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform: scale(1.08);
+}
+
+.support-star-combo .support-button:hover .support-heart path {
+  fill: var(--heart-pink);
+  stroke: var(--heart-pink);
+}
+
+.support-star-combo .star-repo-button:hover .star-icon {
+  color: #f2cc60;
+  animation: heart-wiggle 560ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform: scale(1.08);
+}
+
+.support-star-combo .star-repo-button:hover .star-icon path {
+  fill: #f2cc60;
+}
+
+:root[data-resolved-theme="dark"] .support-star-combo .star-repo-button:hover .star-icon {
+  color: #f2cc60;
 }
 
 @keyframes heart-wiggle {
@@ -1047,6 +1369,12 @@ h3 {
   .hero-panel,
   .result-card {
     padding: 22px;
+  }
+
+  .commit-version-link::after {
+    left: auto;
+    right: 0;
+    width: min(300px, calc(100vw - 36px));
   }
 
   .readiness {

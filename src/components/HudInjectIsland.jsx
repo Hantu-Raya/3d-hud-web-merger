@@ -13,6 +13,7 @@ import {
 } from "../hudPayloadOptions.js";
 import { parseVpk } from "../vpkReader.js";
 import { writeVpk } from "../vpkWriter.js";
+import { buildGitCommitInfoRequestUrl, isGitCommitInfoPayload } from "../gitCommitInfoRefresh.js";
 
 const DEFAULT_COMPILER_HELPER_URL = "http://127.0.0.1:4329";
 const THEME_STORAGE_KEY = "3d-hud-theme-mode";
@@ -215,12 +216,13 @@ async function requestCompilerBackedMerge(file, options = {}) {
   };
 }
 
-export default function HudInjectIsland() {
+export default function HudInjectIsland({ gitCommitInfo = null }) {
   const parseRunRef = useRef(0);
   const closeTutorialRef = useRef(null);
   const [themeMode, setThemeMode] = useState(getStoredThemeMode);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const [hudUiScale, setHudUiScale] = useState(DEFAULT_HUD_UI_SCALE);
+  const [freshGitCommitInfo, setFreshGitCommitInfo] = useState(null);
   const [state, dispatch] = useReducer(reducer, initialState);
   const {
     payload,
@@ -233,6 +235,7 @@ export default function HudInjectIsland() {
     isDragging,
     helperStatus
   } = state;
+  const activeGitCommitInfo = freshGitCommitInfo || gitCommitInfo;
 
   useEffect(() => {
     let cancelled = false;
@@ -246,6 +249,24 @@ export default function HudInjectIsland() {
         dispatch({ type: "payloadFailed", message: error?.message || String(error) });
       });
     return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+    const refreshCommitInfo = async () => {
+      try {
+        const response = await fetch(buildGitCommitInfoRequestUrl(import.meta.env.BASE_URL), { cache: "no-store" });
+        if (!response.ok) return;
+        const nextGitCommitInfo = await response.json();
+        if (!ignore && isGitCommitInfoPayload(nextGitCommitInfo)) {
+          setFreshGitCommitInfo(nextGitCommitInfo);
+        }
+      } catch {
+        // Keep the statically embedded commit info when the refresh endpoint is unavailable.
+      }
+    };
+    refreshCommitInfo();
+    return () => { ignore = true; };
   }, []);
 
   useEffect(() => {
@@ -467,6 +488,7 @@ export default function HudInjectIsland() {
   return (
     <section className="injector" aria-label="3D HUD VPK merger">
       <HeroPanel
+        gitCommitInfo={activeGitCommitInfo}
         helperStatus={helperStatus}
         onTutorialOpen={() => setIsTutorialOpen(true)}
         onThemeModeChange={handleThemeModeChange}
@@ -554,12 +576,28 @@ function PageFooter() {
   );
 }
 
-function HeroPanel({ helperStatus, onTutorialOpen, onThemeModeChange, payload, themeMode }) {
+function HeroPanel({ gitCommitInfo, helperStatus, onTutorialOpen, onThemeModeChange, payload, themeMode }) {
   return (
     <header className="hero-panel">
       <div className="hero-copy">
         <p className="eyebrow">Deadlock addon merge</p>
-        <h1>3D HUD VPK Merger</h1>
+        <div className="hero-title-row">
+          <h1>3D HUD VPK Merger</h1>
+          {gitCommitInfo?.url && gitCommitInfo?.shortHash ? (
+            <a
+              className="commit-version-link"
+              href={gitCommitInfo.url}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={gitCommitInfo.title || `Latest commit ${gitCommitInfo.shortHash}`}
+              data-tooltip={gitCommitInfo.title || `Latest commit ${gitCommitInfo.shortHash}`}
+            >
+              <CommitIcon />
+              <span>Commit</span>
+              <code>{gitCommitInfo.shortHash}</code>
+            </a>
+          ) : null}
+        </div>
         <p className="hero-text">
           Merge the compiled 3D HUD payload into an existing addon VPK. The browser checks paths first; the helper only steps in when compiled layout or CSS patching is needed.
         </p>
@@ -576,10 +614,17 @@ function HeroPanel({ helperStatus, onTutorialOpen, onThemeModeChange, payload, t
 
       <div className="hero-actions">
         <div className="hero-action-buttons">
-          <a className="support-button" href="https://ko-fi.com/hantuaraya" target="_blank" rel="noreferrer">
-            <HeartIcon />
-            <span>Support development</span>
-          </a>
+          <div className="support-star-combo" aria-label="Support and repository actions">
+            <a className="support-button" href="https://ko-fi.com/hantuaraya" target="_blank" rel="noreferrer">
+              <HeartIcon />
+              <span>Support development</span>
+            </a>
+
+            <a className="star-repo-button" href="https://github.com/Hantu-Raya/3d-hud-web-merger" target="_blank" rel="noreferrer" aria-label="Star the repository on GitHub">
+              <StarIcon />
+              <span>Star</span>
+            </a>
+          </div>
 
           <button className="tutorial-button" type="button" onClick={onTutorialOpen}>
             <PlayIcon />
@@ -602,6 +647,22 @@ function PlayIcon() {
   return (
     <svg className="action-icon" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M8.25 5.75v12.5L18 12 8.25 5.75Z" />
+    </svg>
+  );
+}
+
+function CommitIcon() {
+  return (
+    <svg className="commit-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6.25 7.5a2.75 2.75 0 1 1 3.98 2.46l2.94 4.08a2.8 2.8 0 0 1 1.08-.22c.35 0 .69.07 1 .19l2.79-3.89a2.75 2.75 0 1 1 1.39 1l-2.79 3.89a2.75 2.75 0 1 1-4.86.03L8.84 10.96A2.75 2.75 0 0 1 6.25 7.5Z" />
+    </svg>
+  );
+}
+
+function StarIcon() {
+  return (
+    <svg className="star-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m12 3.7 2.35 4.76 5.25.76-3.8 3.7.9 5.23L12 15.68l-4.7 2.47.9-5.23-3.8-3.7 5.25-.76L12 3.7Z" />
     </svg>
   );
 }
