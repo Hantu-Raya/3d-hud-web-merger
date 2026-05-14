@@ -28,6 +28,8 @@ test("3D HUD payload manifest lists unique existing compiled files", async () =>
   assert.equal(manifest.sourceRepository, "Hantu-Raya/Deadlock-mods-collection");
   assert.equal(manifest.sourceRef, "main");
   assert.equal(manifest.sourcePath, "3d hud");
+  assert.equal(manifest.scriptSourcePath, "3d hud/panorama/scripts/3d_hero_dynamic.js");
+  assert.equal(manifest.scriptCompiledPath, "panorama/scripts/3d_hero_dynamic.vjs_c");
   assert.equal(manifest.cssHijackBasePath, "panorama/styles/base/");
   assert.deepEqual(manifest.cssHijackBaseFiles, [
     "panorama/styles/base/citadel_status_effect.vcss_c",
@@ -45,6 +47,11 @@ test("3D HUD payload manifest lists unique existing compiled files", async () =>
   );
   assert.equal(manifest.scriptMinifier, "terser");
   assert.match(manifest.sourceCommit, /^[0-9a-f]{40}$/);
+  assert.match(manifest.scriptSourceCommit, /^[0-9a-f]{40}$/);
+  assert.equal(
+    manifest.scriptSource,
+    `https://github.com/Hantu-Raya/Deadlock-mods-collection/blob/${manifest.scriptSourceCommit}/3d%20hud/panorama/scripts/3d_hero_dynamic.js`
+  );
   assert.match(manifest.baseSourceCommit, /^[0-9a-f]{40}$/);
 
   const normalized = manifest.files.map(normalizeVpkPath);

@@ -111,6 +111,7 @@ label:focus-within {
 
 h1,
 h2,
+h3,
 p {
   margin: 0;
 }
@@ -250,6 +251,14 @@ h2 {
   letter-spacing: 0;
   line-height: 1.08;
   text-wrap: balance;
+}
+
+h3 {
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: 740;
+  letter-spacing: 0;
+  line-height: 1.2;
 }
 
 .hero-text,
@@ -730,6 +739,87 @@ h2 {
   gap: 8px;
 }
 
+.version-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.version-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.version-heading > div {
+  display: grid;
+  gap: 5px;
+}
+
+.version-heading code,
+.version-list dd {
+  font-family: "Geist Mono", "SF Mono", "JetBrains Mono", Consolas, monospace;
+}
+
+.version-heading code {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 0.76rem;
+}
+
+.version-list {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 10px 16px;
+  margin: 0;
+}
+
+.version-list div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.version-list dt {
+  color: var(--faint);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.version-list dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.version-list a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.version-list a:hover {
+  color: var(--text);
+}
+
+.version-list a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
 .status-line {
   position: relative;
   padding-left: 18px;
@@ -992,6 +1082,10 @@ h2 {
 
   .summary-metric:last-child {
     border-bottom: 0;
+  }
+
+  .version-list {
+    grid-template-columns: 1fr;
   }
 }
 

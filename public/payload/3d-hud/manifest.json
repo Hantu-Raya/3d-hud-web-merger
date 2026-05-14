@@ -10,6 +10,10 @@
   "baseSourceRef": "master",
   "baseSourceCommit": "4fd7322fc506c6faaf1a3aeceed719adff9ad10f",
   "baseSourcePath": "game/citadel/pak01_dir/panorama/styles",
+  "scriptSource": "https://github.com/Hantu-Raya/Deadlock-mods-collection/blob/f50dc906e62c28f0d5ddbd7df3c9f1e535912a6a/3d%20hud/panorama/scripts/3d_hero_dynamic.js",
+  "scriptSourcePath": "3d hud/panorama/scripts/3d_hero_dynamic.js",
+  "scriptCompiledPath": "panorama/scripts/3d_hero_dynamic.vjs_c",
+  "scriptSourceCommit": "f50dc906e62c28f0d5ddbd7df3c9f1e535912a6a",
   "cssHijackBasePath": "panorama/styles/base/",
   "cssHijackBaseFiles": [
     "panorama/styles/base/citadel_status_effect.vcss_c",

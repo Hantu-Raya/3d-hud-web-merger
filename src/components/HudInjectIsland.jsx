@@ -45,6 +45,10 @@ function formatBytes(value) {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
+function shortCommit(value) {
+  return String(value || "").slice(0, 12) || "-";
+}
+
 function outputFilename(inputName) {
   const clean = String(inputName || "addon.vpk").replace(/[\\/:*?"<>|]+/g, "_");
   return clean.toLowerCase().endsWith(".vpk") ? `merged-${clean}` : `merged-${clean}.vpk`;
@@ -770,7 +774,57 @@ function ResultPanel({
         <StatusLine tone={helperStatus.available ? "good" : "warn"}>{helperStatus.message}</StatusLine>
       </div>
 
+      <PayloadVersionPanel payload={payload} />
+
       <ConflictDetails conflicts={visibleConflicts} />
+    </section>
+  );
+}
+
+function PayloadVersionPanel({ payload }) {
+  const manifest = payload?.manifest || {};
+  const scriptName = manifest.scriptCompiledPath || "panorama/scripts/3d_hero_dynamic.vjs_c";
+  const scriptCommit = manifest.scriptSourceCommit || manifest.sourceCommit || "";
+  const payloadCommit = manifest.sourceCommit || "";
+  const sourcePath = manifest.scriptSourcePath || "3d hud/panorama/scripts/3d_hero_dynamic.js";
+  const scriptSource = manifest.scriptSource || manifest.source || "";
+
+  return (
+    <section className="version-panel" aria-label="3D HUD version">
+      <div className="version-heading">
+        <div>
+          <p className="section-label">3D HUD version</p>
+          <h3>Dynamic script in this build</h3>
+        </div>
+        <code>{shortCommit(scriptCommit)}</code>
+      </div>
+
+      <dl className="version-list">
+        <div>
+          <dt>Compiled file</dt>
+          <dd>{scriptName}</dd>
+        </div>
+        <div>
+          <dt>Original script</dt>
+          <dd>
+            {scriptSource ? (
+              <a href={scriptSource} target="_blank" rel="noreferrer">{sourcePath}</a>
+            ) : sourcePath}
+          </dd>
+        </div>
+        <div>
+          <dt>Original script commit</dt>
+          <dd>
+            {scriptSource ? (
+              <a href={scriptSource} target="_blank" rel="noreferrer">{scriptCommit || "-"}</a>
+            ) : (scriptCommit || "-")}
+          </dd>
+        </div>
+        <div>
+          <dt>Payload snapshot</dt>
+          <dd>{payloadCommit || "-"}</dd>
+        </div>
+      </dl>
     </section>
   );
 }

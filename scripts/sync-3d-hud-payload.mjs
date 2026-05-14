@@ -43,6 +43,8 @@ const COMPILER_EXE = process.env.HUD_INJECT_SR2COMPILER || path.join(MOD_ROOT, "
 const GITHUB_API = "https://api.github.com";
 const RAW_GITHUB = "https://raw.githubusercontent.com";
 const USER_AGENT = "3d-hud-web-merger-payload-sync";
+const DYNAMIC_SCRIPT_SOURCE_PATH = "panorama/scripts/3d_hero_dynamic.js";
+const DYNAMIC_SCRIPT_COMPILED_PATH = "panorama/scripts/3d_hero_dynamic.vjs_c";
 
 const SOURCE_FILES = [
   {
@@ -56,8 +58,8 @@ const SOURCE_FILES = [
     patchSource: removeTemporaryAnitaPersistLoader
   },
   {
-    sourcePath: "panorama/scripts/3d_hero_dynamic.js",
-    compiledPath: "panorama/scripts/3d_hero_dynamic.vjs_c",
+    sourcePath: DYNAMIC_SCRIPT_SOURCE_PATH,
+    compiledPath: DYNAMIC_SCRIPT_COMPILED_PATH,
     minify: true
   },
   {
@@ -158,6 +160,19 @@ async function resolveRepositoryCommit(repository, ref) {
     throw new Error(`GitHub did not return a commit SHA for ${repository}@${ref}`);
   }
   return commit.sha;
+}
+
+async function resolveRepositoryPathCommit(repository, ref, repositoryPath) {
+  const url = new URL(`${GITHUB_API}/repos/${repository}/commits`);
+  url.searchParams.set("sha", ref);
+  url.searchParams.set("path", repositoryPath);
+  url.searchParams.set("per_page", "1");
+
+  const commits = await fetchJson(url.toString());
+  if (!Array.isArray(commits) || !commits[0]?.sha) {
+    throw new Error(`GitHub did not return a commit SHA for ${repositoryPath} in ${repository}@${ref}`);
+  }
+  return commits[0].sha;
 }
 
 async function downloadSourceFile(commitSha, sourcePath) {
@@ -349,7 +364,8 @@ async function copyCompiledPayload(compiledRoot) {
 
 }
 
-async function writePayloadMetadata(commitSha, baseCommitSha, hudProbeSource) {
+async function writePayloadMetadata(commitSha, baseCommitSha, scriptCommitSha, hudProbeSource) {
+  const scriptRepositoryPath = `${SOURCE_DIR}/${DYNAMIC_SCRIPT_SOURCE_PATH}`;
   await writeFile(path.join(PAYLOAD_ROOT, "hud-probe.xml"), `${hudProbeSource}\n`, "utf8");
   const manifest = {
     name: "3d-hud",
@@ -363,6 +379,10 @@ async function writePayloadMetadata(commitSha, baseCommitSha, hudProbeSource) {
     baseSourceRef: BASE_REF,
     baseSourceCommit: baseCommitSha,
     baseSourcePath: BASE_SOURCE_DIR,
+    scriptSource: `https://github.com/${SOURCE_REPOSITORY}/blob/${scriptCommitSha}/${scriptRepositoryPath.replaceAll(" ", "%20")}`,
+    scriptSourcePath: scriptRepositoryPath,
+    scriptCompiledPath: DYNAMIC_SCRIPT_COMPILED_PATH,
+    scriptSourceCommit: scriptCommitSha,
     cssHijackBasePath: "panorama/styles/base/",
     cssHijackBaseFiles: CSS_HIJACK_STYLE_PATHS.map(cssHijackBasePathFor),
     compiler: "Source 2 compiler wrapper",
@@ -376,6 +396,11 @@ async function writePayloadMetadata(commitSha, baseCommitSha, hudProbeSource) {
 
 async function main() {
   const commitSha = await resolveRepositoryCommit(SOURCE_REPOSITORY, SOURCE_REF);
+  const scriptCommitSha = await resolveRepositoryPathCommit(
+    SOURCE_REPOSITORY,
+    SOURCE_REF,
+    `${SOURCE_DIR}/${DYNAMIC_SCRIPT_SOURCE_PATH}`
+  );
   const baseCommitSha = await resolveRepositoryCommit(BASE_REPOSITORY, BASE_REF);
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "3d-hud-payload-"));
   const sourceRoot = path.join(tempRoot, "3d hud");
@@ -385,9 +410,10 @@ async function main() {
     const hudProbeSource = await stageSource(commitSha, sourceRoot, baseCssSources);
     const { compiledRoot, result } = await compileSource(sourceRoot);
     await copyCompiledPayload(compiledRoot);
-    await writePayloadMetadata(commitSha, baseCommitSha, hudProbeSource);
+    await writePayloadMetadata(commitSha, baseCommitSha, scriptCommitSha, hudProbeSource);
 
     console.log(`Synced payload from ${SOURCE_REPOSITORY}@${commitSha}`);
+    console.log(`Synced dynamic script from ${SOURCE_REPOSITORY}@${scriptCommitSha}`);
     console.log(`Synced base CSS from ${BASE_REPOSITORY}@${baseCommitSha}`);
     console.log(`Compiled ${SOURCE_FILES.length} raw source files; minified 3d_hero_dynamic.js with Terser before compile.`);
     console.log(`Compiled ${BASE_CSS_FILES.length} SteamTracking base CSS files into panorama/styles/base.`);
