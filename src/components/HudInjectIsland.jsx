@@ -14,13 +14,19 @@ import {
 import { parseVpk } from "../vpkReader.js";
 import { writeVpk } from "../vpkWriter.js";
 import { buildGitCommitInfoRequestUrl, isGitCommitInfoPayload } from "../gitCommitInfoRefresh.js";
+import {
+  buildCompilerHelperFetchOptions,
+  compilerHelperEndpoint,
+  DEFAULT_COMPILER_HELPER_URL,
+  isLocalHelperAccessBlockedError,
+  normalizeCompilerHelperUrl
+} from "../compilerHelperClient.js";
 
-const DEFAULT_COMPILER_HELPER_URL = "http://127.0.0.1:4329";
 const THEME_STORAGE_KEY = "3d-hud-theme-mode";
 const TUTORIAL_GIF_PATH = "demo/usage-demo.gif";
-const COMPILER_HELPER_URL = String(
+const COMPILER_HELPER_URL = normalizeCompilerHelperUrl(
   import.meta.env.PUBLIC_HUD_INJECT_HELPER_URL || DEFAULT_COMPILER_HELPER_URL
-).replace(/\/+$/, "");
+);
 
 function joinAssetPath(baseUrl, path) {
   const base = String(baseUrl || "/");
@@ -28,15 +34,8 @@ function joinAssetPath(baseUrl, path) {
   return `${cleanBase}${String(path || "").replace(/^\/+/, "")}`;
 }
 
-function compilerHelperEndpoint(path) {
-  return `${COMPILER_HELPER_URL}/${String(path || "").replace(/^\/+/, "")}`;
-}
-
 function compilerHelperFetch(path, options = {}) {
-  return fetch(compilerHelperEndpoint(path), {
-    ...options,
-    targetAddressSpace: "loopback"
-  });
+  return fetch(compilerHelperEndpoint(COMPILER_HELPER_URL, path), buildCompilerHelperFetchOptions(options));
 }
 
 function formatBytes(value) {
@@ -83,6 +82,14 @@ function applyThemeMode(mode) {
 
   document.documentElement.dataset.themeMode = mode;
   document.documentElement.dataset.resolvedTheme = resolveThemeMode(mode);
+}
+
+function helperBlockedMessage(error) {
+  if (isLocalHelperAccessBlockedError(error)) {
+    return "Local helper unavailable or blocked. Start npm run helper, click Connect helper, and allow this site to access apps on this device.";
+  }
+
+  return error?.message || String(error);
 }
 
 async function readErrorResponse(response) {
@@ -271,17 +278,16 @@ export default function HudInjectIsland({ gitCommitInfo = null }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    loadHelperStatus(controller.signal)
-      .then((nextHelperStatus) => {
+    refreshHelperStatus({ signal: controller.signal })
+      .then(() => {
         if (controller.signal.aborted) return;
-        dispatch({ type: "helperLoaded", ...nextHelperStatus });
       })
-      .catch(() => {
+      .catch((error) => {
         if (controller.signal.aborted) return;
         dispatch({
           type: "helperLoaded",
           available: false,
-          message: "Local compiler helper offline or blocked. Start npm run helper, then allow local network access if the browser asks."
+          message: helperBlockedMessage(error)
         });
       });
     return () => controller.abort();
@@ -385,6 +391,18 @@ export default function HudInjectIsland({ gitCommitInfo = null }) {
     : (canMerge ? "Builds and downloads a merged copy. The original file is not changed." : "Choose a VPK and wait for readiness checks.");
   const tutorialGifUrl = joinAssetPath(import.meta.env.BASE_URL, TUTORIAL_GIF_PATH);
 
+  async function refreshHelperStatus(options = {}) {
+    dispatch({
+      type: "helperLoaded",
+      available: false,
+      message: options.manual ? "Connecting to local compiler helper..." : "Checking local compiler helper..."
+    });
+
+    const nextHelperStatus = await loadHelperStatus(options.signal);
+    dispatch({ type: "helperLoaded", ...nextHelperStatus });
+    return nextHelperStatus;
+  }
+
   async function parseFile(file) {
     const runId = parseRunRef.current + 1;
     parseRunRef.current = runId;
@@ -434,7 +452,13 @@ export default function HudInjectIsland({ gitCommitInfo = null }) {
   async function handleBuild() {
     if (!selectedFile || !parsed || !payload) return;
     if (requiresCompilerHelper && !helperStatus.available) {
-      dispatch({ type: "status", status: helperStatus.message });
+      try {
+        await refreshHelperStatus({ manual: true });
+      } catch (error) {
+        const message = helperBlockedMessage(error);
+        dispatch({ type: "helperLoaded", available: false, message });
+        dispatch({ type: "status", status: message });
+      }
       return;
     }
     dispatch({
@@ -476,6 +500,16 @@ export default function HudInjectIsland({ gitCommitInfo = null }) {
     }
   }
 
+  async function handleHelperConnect() {
+    try {
+      await refreshHelperStatus({ manual: true });
+    } catch (error) {
+      const message = helperBlockedMessage(error);
+      dispatch({ type: "helperLoaded", available: false, message });
+      dispatch({ type: "status", status: message });
+    }
+  }
+
   function handleThemeModeChange(nextThemeMode) {
     if (nextThemeMode === "system") {
       window.localStorage.removeItem(THEME_STORAGE_KEY);
@@ -500,6 +534,7 @@ export default function HudInjectIsland({ gitCommitInfo = null }) {
         buttonLabel={buttonLabel}
         canMerge={canMerge}
         handleBuild={handleBuild}
+        handleHelperConnect={handleHelperConnect}
         handleDragLeave={handleDragLeave}
         handleDragOver={handleDragOver}
         handleDrop={handleDrop}
@@ -728,6 +763,7 @@ function CommandPanel({
   buttonLabel,
   canMerge,
   handleBuild,
+  handleHelperConnect,
   handleDragLeave,
   handleDragOver,
   handleDrop,
@@ -782,8 +818,8 @@ function CommandPanel({
 
       {helperCommandVisible ? (
         <div className="helper-callout" role="note">
-          <span>Compiler helper required for this VPK.</span>
-          <kbd>npm run helper</kbd>
+          <span>Compiler helper required for this scale or VPK. Run <kbd>npm run helper</kbd>, then allow local access.</span>
+          <button type="button" className="helper-connect" onClick={handleHelperConnect}>Connect helper</button>
         </div>
       ) : null}
     </div>

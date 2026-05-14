@@ -983,6 +983,32 @@ h3 {
   font-size: 0.9rem;
 }
 
+.helper-connect {
+  border: 1px solid color-mix(in srgb, var(--warn) 42%, transparent);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 7px 11px;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.helper-connect:hover {
+  border-color: var(--warn);
+  background: var(--warn);
+  color: #fff8ea;
+}
+
+.helper-connect:active {
+  transform: scale(0.98);
+}
+
 .result-card {
   display: grid;
   gap: 22px;
