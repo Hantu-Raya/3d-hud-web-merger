@@ -524,6 +524,7 @@ export default function HudInjectIsland({ gitCommitInfo = null }) {
       <HeroPanel
         gitCommitInfo={activeGitCommitInfo}
         helperStatus={helperStatus}
+        onHelperConnect={handleHelperConnect}
         onTutorialOpen={() => setIsTutorialOpen(true)}
         onThemeModeChange={handleThemeModeChange}
         payload={payload}
@@ -611,7 +612,7 @@ function PageFooter() {
   );
 }
 
-function HeroPanel({ gitCommitInfo, helperStatus, onTutorialOpen, onThemeModeChange, payload, themeMode }) {
+function HeroPanel({ gitCommitInfo, helperStatus, onHelperConnect, onTutorialOpen, onThemeModeChange, payload, themeMode }) {
   return (
     <header className="hero-panel">
       <div className="hero-copy">
@@ -669,7 +670,13 @@ function HeroPanel({ gitCommitInfo, helperStatus, onTutorialOpen, onThemeModeCha
 
         <div className="readiness" aria-label="Readiness checks">
           <StatusBadge label="Payload" value={payload ? "Ready" : "Loading"} tone={payload ? "good" : "warn"} />
-          <StatusBadge label="Helper" value={helperStatus.available ? "Ready" : "Offline"} tone={helperStatus.available ? "good" : "warn"} />
+          <StatusBadge
+            label="Helper"
+            value={helperStatus.available ? "Ready" : "Offline"}
+            tone={helperStatus.available ? "good" : "warn"}
+            actionLabel={helperStatus.available ? "" : "Connect"}
+            onAction={helperStatus.available ? null : onHelperConnect}
+          />
         </div>
 
         <ThemeSwitcher value={themeMode} onChange={onThemeModeChange} />
@@ -960,11 +967,17 @@ function ConflictDetails({ conflicts }) {
   );
 }
 
-function StatusBadge({ label, value, tone }) {
+function StatusBadge({ actionLabel = "", label, onAction = null, value, tone }) {
   return (
     <div className={`status-badge status-${tone}`}>
       <span>{label}</span>
-      <strong>{value}</strong>
+      {onAction ? (
+        <button type="button" className="status-action" onClick={onAction} aria-label={`${actionLabel} ${label.toLowerCase()}`}>
+          {actionLabel}
+        </button>
+      ) : (
+        <strong>{value}</strong>
+      )}
     </div>
   );
 }
