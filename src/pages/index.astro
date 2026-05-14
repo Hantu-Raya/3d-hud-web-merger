@@ -1,6 +1,9 @@
 ---
 import HudInjectIsland from "../components/HudInjectIsland.jsx";
+import { getGitCommitInfo } from "../gitCommitInfo.js";
 import "../styles/global.css";
+
+const gitCommitInfo = getGitCommitInfo();
 ---
 
 <html lang="en">
@@ -32,7 +35,7 @@ import "../styles/global.css";
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
     <main id="main-content" class="app-shell">
-      <HudInjectIsland client:load />
+      <HudInjectIsland gitCommitInfo={gitCommitInfo} client:load />
     </main>
   </body>
 </html>
