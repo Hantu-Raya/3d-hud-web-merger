@@ -22,6 +22,10 @@ import {
 import { createCssHijackSource } from "../src/hudStylePatch.js";
 import {
   DEFAULT_HUD_UI_SCALE,
+  HUD_UI_SCALE_PATCHED_PATHS,
+  MAX_HUD_UI_SCALE,
+  MIN_HUD_UI_SCALE,
+  createFileSignature,
   patchHudHealthContainerStyleSource,
   patchHudScaleStyleSource,
   patchStatusEffectStyleSource
@@ -45,6 +49,9 @@ const RAW_GITHUB = "https://raw.githubusercontent.com";
 const USER_AGENT = "3d-hud-web-merger-payload-sync";
 const DYNAMIC_SCRIPT_SOURCE_PATH = "panorama/scripts/3d_hero_dynamic.js";
 const DYNAMIC_SCRIPT_COMPILED_PATH = "panorama/scripts/3d_hero_dynamic.vjs_c";
+const HUD_SCALE_SOURCE_PATH = "panorama/styles/3d_hud.css";
+const HUD_HEALTH_CONTAINER_STYLE_SOURCE_PATH = "panorama/styles/hud_health_container.css";
+const HUD_UI_SCALE_VARIANT_ROOT = "options/hud-ui-scale";
 
 const SOURCE_FILES = [
   {
@@ -273,6 +280,7 @@ async function runProcess(file, args, options = {}) {
 
 async function stageSource(commitSha, sourceRoot, baseCssSources = new Map()) {
   let hudProbeSource = "";
+  const stagedSourcesByPath = new Map();
 
   for (const file of SOURCE_FILES) {
     let source = await downloadSourceFile(commitSha, file.sourcePath);
@@ -293,6 +301,7 @@ async function stageSource(commitSha, sourceRoot, baseCssSources = new Map()) {
       source = await minifyJavascript(source, file.sourcePath);
     }
 
+    stagedSourcesByPath.set(file.sourcePath, source);
     const destination = localPath(sourceRoot, file.sourcePath);
     await mkdir(path.dirname(destination), { recursive: true });
     await writeFile(destination, source, "utf8");
@@ -302,7 +311,10 @@ async function stageSource(commitSha, sourceRoot, baseCssSources = new Map()) {
     throw new Error("Could not extract hud-probe.xml from latest hud.xml");
   }
 
-  return hudProbeSource;
+  return {
+    hudProbeSource,
+    stagedSourcesByPath
+  };
 }
 
 async function stageBaseCssSource(baseCommitSha, sourceRoot) {
@@ -317,17 +329,16 @@ async function stageBaseCssSource(baseCommitSha, sourceRoot) {
   return sourcesByCompiledPath;
 }
 
-async function compileSource(sourceRoot) {
+async function compileSource(sourceRoot, requiredCompiledPaths = [
+  ...SOURCE_FILES.map((file) => file.compiledPath),
+  ...BASE_CSS_FILES.map((file) => file.compiledPath)
+]) {
   if (!existsSync(COMPILER_EXE)) {
     throw new Error(`Source 2 compiler wrapper not found: ${COMPILER_EXE}`);
   }
 
   const result = await runProcess(COMPILER_EXE, [sourceRoot], { timeoutMs: 300000 });
   const compiledRoot = `${sourceRoot}_compiled`;
-  const requiredCompiledPaths = [
-    ...SOURCE_FILES.map((file) => file.compiledPath),
-    ...BASE_CSS_FILES.map((file) => file.compiledPath)
-  ];
   const missing = requiredCompiledPaths
     .filter((compiledPath) => !existsSync(localPath(compiledRoot, compiledPath)));
 
@@ -364,8 +375,74 @@ async function copyCompiledPayload(compiledRoot) {
 
 }
 
-async function writePayloadMetadata(commitSha, baseCommitSha, scriptCommitSha, hudProbeSource) {
+function hudUiScaleVariantPath(scale, compiledPath) {
+  return `${HUD_UI_SCALE_VARIANT_ROOT}/${scale}/${compiledPath}`;
+}
+
+async function copyHudUiScaleVariantPayload(compiledRoot, scale) {
+  const variant = {};
+  for (const compiledPath of HUD_UI_SCALE_PATCHED_PATHS) {
+    const from = localPath(compiledRoot, compiledPath);
+    const to = localPath(PAYLOAD_ROOT, hudUiScaleVariantPath(scale, compiledPath));
+    const bytes = await readFile(from);
+    await mkdir(path.dirname(to), { recursive: true });
+    await writeFile(to, bytes);
+    variant[compiledPath] = {
+      file: hudUiScaleVariantPath(scale, compiledPath),
+      ...createFileSignature(bytes)
+    };
+  }
+  return variant;
+}
+
+async function writeHudUiScaleVariantSources(sourceRoot, stagedSourcesByPath, scale) {
+  const scaleSource = stagedSourcesByPath.get(HUD_SCALE_SOURCE_PATH);
+  const healthContainerSource = stagedSourcesByPath.get(HUD_HEALTH_CONTAINER_STYLE_SOURCE_PATH);
+  if (!scaleSource || !healthContainerSource) {
+    throw new Error("Cannot generate HUD UI scale variants because scale CSS source is missing");
+  }
+
+  const nextSources = [
+    {
+      sourcePath: HUD_SCALE_SOURCE_PATH,
+      source: patchHudScaleStyleSource(scaleSource, scale)
+    },
+    {
+      sourcePath: HUD_HEALTH_CONTAINER_STYLE_SOURCE_PATH,
+      source: patchHudHealthContainerStyleSource(healthContainerSource, scale)
+    }
+  ];
+
+  for (const file of nextSources) {
+    const destination = localPath(sourceRoot, file.sourcePath);
+    await mkdir(path.dirname(destination), { recursive: true });
+    await writeFile(destination, file.source, "utf8");
+  }
+}
+
+async function createHudUiScaleVariants(sourceRoot, stagedSourcesByPath) {
+  await rm(localPath(PAYLOAD_ROOT, HUD_UI_SCALE_VARIANT_ROOT), { recursive: true, force: true });
+  const variants = {};
+  for (let scale = MIN_HUD_UI_SCALE; scale <= MAX_HUD_UI_SCALE; scale += 1) {
+    if (scale === DEFAULT_HUD_UI_SCALE) continue;
+    await writeHudUiScaleVariantSources(sourceRoot, stagedSourcesByPath, scale);
+    const { compiledRoot } = await compileSource(sourceRoot, HUD_UI_SCALE_PATCHED_PATHS);
+    variants[String(scale)] = await copyHudUiScaleVariantPayload(compiledRoot, scale);
+  }
+  return variants;
+}
+
+async function createHudUiScaleDefaultSignatures() {
+  const signatures = {};
+  for (const compiledPath of HUD_UI_SCALE_PATCHED_PATHS) {
+    signatures[compiledPath] = createFileSignature(await readFile(localPath(PAYLOAD_ROOT, compiledPath)));
+  }
+  return signatures;
+}
+
+async function writePayloadMetadata(commitSha, baseCommitSha, scriptCommitSha, hudProbeSource, hudUiScaleVariants) {
   const scriptRepositoryPath = `${SOURCE_DIR}/${DYNAMIC_SCRIPT_SOURCE_PATH}`;
+  const hudUiScaleDefaultSignatures = await createHudUiScaleDefaultSignatures();
   await writeFile(path.join(PAYLOAD_ROOT, "hud-probe.xml"), `${hudProbeSource}\n`, "utf8");
   const manifest = {
     name: "3d-hud",
@@ -389,6 +466,16 @@ async function writePayloadMetadata(commitSha, baseCommitSha, scriptCommitSha, h
     baseCssSource: "SteamTracking GameTracking-Deadlock",
     scriptMinifier: "terser",
     preservedCompiledFiles: PRESERVED_COMPILED_FILES,
+    scaleOptions: {
+      hudUiScale: {
+        default: DEFAULT_HUD_UI_SCALE,
+        min: MIN_HUD_UI_SCALE,
+        max: MAX_HUD_UI_SCALE,
+        paths: HUD_UI_SCALE_PATCHED_PATHS,
+        defaultSignatures: hudUiScaleDefaultSignatures,
+        variants: hudUiScaleVariants
+      }
+    },
     files: MANIFEST_FILES
   };
   await writeFile(path.join(PAYLOAD_ROOT, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
@@ -407,16 +494,18 @@ async function main() {
 
   try {
     const baseCssSources = await stageBaseCssSource(baseCommitSha, sourceRoot);
-    const hudProbeSource = await stageSource(commitSha, sourceRoot, baseCssSources);
+    const { hudProbeSource, stagedSourcesByPath } = await stageSource(commitSha, sourceRoot, baseCssSources);
     const { compiledRoot, result } = await compileSource(sourceRoot);
     await copyCompiledPayload(compiledRoot);
-    await writePayloadMetadata(commitSha, baseCommitSha, scriptCommitSha, hudProbeSource);
+    const hudUiScaleVariants = await createHudUiScaleVariants(sourceRoot, stagedSourcesByPath);
+    await writePayloadMetadata(commitSha, baseCommitSha, scriptCommitSha, hudProbeSource, hudUiScaleVariants);
 
     console.log(`Synced payload from ${SOURCE_REPOSITORY}@${commitSha}`);
     console.log(`Synced dynamic script from ${SOURCE_REPOSITORY}@${scriptCommitSha}`);
     console.log(`Synced base CSS from ${BASE_REPOSITORY}@${baseCommitSha}`);
     console.log(`Compiled ${SOURCE_FILES.length} raw source files; minified 3d_hero_dynamic.js with Terser before compile.`);
     console.log(`Compiled ${BASE_CSS_FILES.length} SteamTracking base CSS files into panorama/styles/base.`);
+    console.log(`Compiled ${Object.keys(hudUiScaleVariants).length} HUD UI scale variants for browser-only scaling.`);
     console.log(`Preserved ${PRESERVED_COMPILED_FILES.length} compiled compatibility file not present in upstream raw source.`);
     if (result.stdout.trim()) console.log(result.stdout.trim());
     if (result.stderr.trim()) console.error(result.stderr.trim());

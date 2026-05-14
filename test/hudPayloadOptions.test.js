@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  applyHudUiScalePayloadFiles,
+  buildHudUiScaleKnownSignatures,
+  createFileSignature,
+  fileSignatureKey,
   patchHudHealthContainerStyleSource,
   patchHudScaleStyleSource,
   patchStatusEffectStyleSource,
@@ -23,6 +27,56 @@ test("normalizes HUD UI scale to the supported slider range", () => {
 test("detects when HUD UI scale needs real compiler output", () => {
   assert.equal(requiresCompilerForHudUiScale(170), false);
   assert.equal(requiresCompilerForHudUiScale(120), true);
+});
+
+test("applies compiled HUD UI scale variant bytes to only scale-owned payload paths", () => {
+  const baseFiles = [
+    { path: "panorama/styles/3d_hud.vcss_c", bytes: new Uint8Array([1]) },
+    { path: "panorama/styles/hud_health_container.vcss_c", bytes: new Uint8Array([2]) },
+    { path: "panorama/styles/hud_health.vcss_c", bytes: new Uint8Array([3]) }
+  ];
+  const variantFiles = new Map([
+    ["panorama/styles/3d_hud.vcss_c", new Uint8Array([10])],
+    ["panorama/styles/hud_health_container.vcss_c", new Uint8Array([20])],
+    ["panorama/styles/hud_health.vcss_c", new Uint8Array([30])]
+  ]);
+
+  const nextFiles = applyHudUiScalePayloadFiles(baseFiles, variantFiles);
+
+  assert.deepEqual([...nextFiles[0].bytes], [10]);
+  assert.deepEqual([...nextFiles[1].bytes], [20]);
+  assert.deepEqual([...nextFiles[2].bytes], [3]);
+  assert.notEqual(nextFiles[0].bytes, variantFiles.get("panorama/styles/3d_hud.vcss_c"));
+  assert.notEqual(nextFiles[2].bytes, baseFiles[2].bytes);
+});
+
+test("builds known signatures for base and variant HUD UI scale files", () => {
+  const baseScale = new Uint8Array([1, 2, 3]);
+  const variantScale = new Uint8Array([4, 5, 6]);
+  const manifest = {
+    scaleOptions: {
+      hudUiScale: {
+        defaultSignatures: {
+          "panorama/styles/3d_hud.vcss_c": createFileSignature(baseScale)
+        },
+        variants: {
+          120: {
+            "panorama/styles/3d_hud.vcss_c": {
+              file: "options/hud-ui-scale/120/panorama/styles/3d_hud.vcss_c",
+              ...createFileSignature(variantScale)
+            }
+          }
+        }
+      }
+    }
+  };
+
+  const signatures = buildHudUiScaleKnownSignatures(manifest, [
+    { path: "panorama/styles/3d_hud.vcss_c", bytes: baseScale }
+  ]);
+
+  assert.equal(signatures.get("panorama/styles/3d_hud.vcss_c").has(fileSignatureKey(createFileSignature(baseScale))), true);
+  assert.equal(signatures.get("panorama/styles/3d_hud.vcss_c").has(fileSignatureKey(createFileSignature(variantScale))), true);
 });
 
 test("patches the HUD scale source at the 170 target position", () => {

@@ -1,41 +1,26 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 
-import { createCompilerBackedHudMergePlan } from "../compilerBackedMerge.js";
 import { downloadBytes } from "../download.js";
 import { resolveHudPayloadConflicts } from "../hudConflictResolver.js";
-import { loadHudPayload } from "../hudPayload.js";
+import { loadHudPayload, loadHudScaleVariant } from "../hudPayload.js";
 import {
+  applyHudUiScalePayloadFiles,
   DEFAULT_HUD_UI_SCALE,
   MAX_HUD_UI_SCALE,
   MIN_HUD_UI_SCALE,
-  normalizeHudUiScale,
-  requiresCompilerForHudUiScale
+  normalizeHudUiScale
 } from "../hudPayloadOptions.js";
 import { parseVpk } from "../vpkReader.js";
 import { writeVpk } from "../vpkWriter.js";
 import { buildGitCommitInfoRequestUrl, isGitCommitInfoPayload } from "../gitCommitInfoRefresh.js";
-import {
-  buildCompilerHelperFetchOptions,
-  compilerHelperEndpoint,
-  DEFAULT_COMPILER_HELPER_URL,
-  isLocalHelperAccessBlockedError,
-  normalizeCompilerHelperUrl
-} from "../compilerHelperClient.js";
 
 const THEME_STORAGE_KEY = "3d-hud-theme-mode";
 const TUTORIAL_GIF_PATH = "demo/usage-demo.gif";
-const COMPILER_HELPER_URL = normalizeCompilerHelperUrl(
-  import.meta.env.PUBLIC_HUD_INJECT_HELPER_URL || DEFAULT_COMPILER_HELPER_URL
-);
 
 function joinAssetPath(baseUrl, path) {
   const base = String(baseUrl || "/");
   const cleanBase = base.endsWith("/") ? base : `${base}/`;
   return `${cleanBase}${String(path || "").replace(/^\/+/, "")}`;
-}
-
-function compilerHelperFetch(path, options = {}) {
-  return fetch(compilerHelperEndpoint(COMPILER_HELPER_URL, path), buildCompilerHelperFetchOptions(options));
 }
 
 function formatBytes(value) {
@@ -84,23 +69,6 @@ function applyThemeMode(mode) {
   document.documentElement.dataset.resolvedTheme = resolveThemeMode(mode);
 }
 
-function helperBlockedMessage(error) {
-  if (isLocalHelperAccessBlockedError(error)) {
-    return "Local helper unavailable or blocked. Start npm run helper, click Connect helper, and allow this site to access apps on this device.";
-  }
-
-  return error?.message || String(error);
-}
-
-async function readErrorResponse(response) {
-  try {
-    const data = await response.json();
-    return data?.error || JSON.stringify(data);
-  } catch {
-    return `${response.status} ${response.statusText}`;
-  }
-}
-
 const initialState = {
   payload: null,
   payloadStatus: "Loading 3D HUD payload...",
@@ -109,11 +77,7 @@ const initialState = {
   parseError: "",
   status: "Status: Ready",
   isBusy: false,
-  isDragging: false,
-  helperStatus: {
-    available: false,
-    message: "Checking local compiler helper..."
-  }
+  isDragging: false
 };
 
 function reducer(state, action) {
@@ -129,14 +93,6 @@ function reducer(state, action) {
         ...state,
         payload: null,
         payloadStatus: action.message
-      };
-    case "helperLoaded":
-      return {
-        ...state,
-        helperStatus: {
-          available: action.available,
-          message: action.message
-        }
       };
     case "parseStarted":
       return {
@@ -184,52 +140,20 @@ function reducer(state, action) {
   }
 }
 
-async function loadHelperStatus(signal) {
-  const response = await compilerHelperFetch("/health", { signal });
-  if (!response.ok) {
-    throw new Error(await readErrorResponse(response));
-  }
-
-  const data = await response.json();
-  const available = !!data.compilerExists && !!data.sourceExists;
-  return {
-    available,
-    message: available
-      ? "Local compiler helper ready for layout/CSS conflicts."
-      : "Local compiler helper is running, but its compiler or 3D HUD source path is missing."
-  };
-}
-
-async function requestCompilerBackedMerge(file, options = {}) {
-  const response = await compilerHelperFetch("/merge", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/octet-stream",
-      "X-File-Name": file.name,
-      "X-Hud-Ui-Scale": String(normalizeHudUiScale(options.hudUiScale))
-    },
-    body: await file.arrayBuffer()
-  });
-  if (!response.ok) {
-    throw new Error(await readErrorResponse(response));
-  }
-  const patchedPathsHeader = response.headers.get("X-Hud-Inject-Patched-Paths") || "";
-  return {
-    bytes: new Uint8Array(await response.arrayBuffer()),
-    patchedPaths: patchedPathsHeader.split(",").flatMap((path) => {
-      const cleanPath = path.trim();
-      return cleanPath ? [cleanPath] : [];
-    })
-  };
-}
-
 export default function HudInjectIsland({ gitCommitInfo = null }) {
   const parseRunRef = useRef(0);
   const closeTutorialRef = useRef(null);
+  const scaleVariantCacheRef = useRef(new Map([[String(DEFAULT_HUD_UI_SCALE), new Map()]]));
   const [themeMode, setThemeMode] = useState(getStoredThemeMode);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const [hudUiScale, setHudUiScale] = useState(DEFAULT_HUD_UI_SCALE);
   const [freshGitCommitInfo, setFreshGitCommitInfo] = useState(null);
+  const [scaleVariant, setScaleVariant] = useState({
+    error: "",
+    filesByPath: new Map(),
+    isLoading: false,
+    scale: DEFAULT_HUD_UI_SCALE
+  });
   const [state, dispatch] = useReducer(reducer, initialState);
   const {
     payload,
@@ -239,8 +163,7 @@ export default function HudInjectIsland({ gitCommitInfo = null }) {
     parseError,
     status,
     isBusy,
-    isDragging,
-    helperStatus
+    isDragging
   } = state;
   const activeGitCommitInfo = freshGitCommitInfo || gitCommitInfo;
 
@@ -277,21 +200,51 @@ export default function HudInjectIsland({ gitCommitInfo = null }) {
   }, []);
 
   useEffect(() => {
-    const controller = new AbortController();
-    refreshHelperStatus({ signal: controller.signal })
-      .then(() => {
-        if (controller.signal.aborted) return;
+    if (!payload) return undefined;
+
+    let ignore = false;
+    const scale = normalizeHudUiScale(hudUiScale);
+    const cached = scaleVariantCacheRef.current.get(String(scale));
+    if (cached) {
+      setScaleVariant({
+        error: "",
+        filesByPath: cached,
+        isLoading: false,
+        scale
+      });
+      return () => { ignore = true; };
+    }
+
+    setScaleVariant({
+      error: "",
+      filesByPath: new Map(),
+      isLoading: true,
+      scale
+    });
+
+    loadHudScaleVariant(import.meta.env.BASE_URL, payload.manifest, scale)
+      .then((filesByPath) => {
+        if (ignore) return;
+        scaleVariantCacheRef.current.set(String(scale), filesByPath);
+        setScaleVariant({
+          error: "",
+          filesByPath,
+          isLoading: false,
+          scale
+        });
       })
       .catch((error) => {
-        if (controller.signal.aborted) return;
-        dispatch({
-          type: "helperLoaded",
-          available: false,
-          message: helperBlockedMessage(error)
+        if (ignore) return;
+        setScaleVariant({
+          error: error?.message || String(error),
+          filesByPath: new Map(),
+          isLoading: false,
+          scale
         });
       });
-    return () => controller.abort();
-  }, []);
+
+    return () => { ignore = true; };
+  }, [payload, hudUiScale]);
 
   useEffect(() => {
     applyThemeMode(themeMode);
@@ -328,80 +281,77 @@ export default function HudInjectIsland({ gitCommitInfo = null }) {
     };
   }, [isTutorialOpen]);
 
-  const activePayloadStatus = payload ? `Payload ready: ${payload.files.length} files, ${formatBytes(payload.totalBytes)}. HUD UI scale ${hudUiScale}%.` : payloadStatus;
-  const scaleRequiresCompiler = requiresCompilerForHudUiScale(hudUiScale);
+  const scaleVariantPending = !!payload && (scaleVariant.scale !== hudUiScale || scaleVariant.isLoading);
+  const scaleVariantError = scaleVariant.scale === hudUiScale ? scaleVariant.error : "";
+  const scaleReady = !!payload && scaleVariant.scale === hudUiScale && !scaleVariant.isLoading && !scaleVariantError;
+  const activePayloadFiles = useMemo(() => {
+    if (!payload || !scaleReady) return null;
+    return applyHudUiScalePayloadFiles(payload.files, scaleVariant.filesByPath);
+  }, [payload, scaleReady, scaleVariant.filesByPath]);
+  const activePayloadStatus = payload
+    ? (scaleVariantError
+      ? scaleVariantError
+      : (scaleVariantPending
+        ? `Loading compiled HUD UI scale ${hudUiScale}%...`
+        : `Payload ready: ${payload.files.length} files, HUD UI scale ${hudUiScale}%.`))
+    : payloadStatus;
+  const scaleStatusLabel = scaleVariantError
+    ? "Error"
+    : (scaleVariantPending ? "Loading" : `${hudUiScale}%`);
+  const scaleStatusTone = scaleVariantError ? "warn" : (scaleVariantPending ? "warn" : "good");
 
   const browserPlan = useMemo(() => {
-    if (!parsed || !payload) return null;
-    return resolveHudPayloadConflicts(parsed.files, payload.files, {
-      hudProbeSource: payload.hudProbeSource
-    });
-  }, [parsed, payload]);
-
-  const compilerPlan = useMemo(() => {
-    if (!parsed || !payload || (browserPlan?.files && !scaleRequiresCompiler)) return null;
-    return createCompilerBackedHudMergePlan(parsed.files, payload.files, {
+    if (!parsed || !payload || !activePayloadFiles) return null;
+    return resolveHudPayloadConflicts(parsed.files, activePayloadFiles, {
       hudProbeSource: payload.hudProbeSource,
-      hudUiScale
+      knownScaleVariantSignaturesByPath: payload.knownScaleVariantSignaturesByPath
     });
-  }, [parsed, payload, browserPlan, scaleRequiresCompiler, hudUiScale]);
+  }, [parsed, payload, activePayloadFiles]);
 
-  const requiresCompilerHelper = !!compilerPlan && (!browserPlan?.files || scaleRequiresCompiler) && compilerPlan.blockedConflicts.length === 0;
-  const displayPlan = requiresCompilerHelper ? compilerPlan : browserPlan;
-  const visibleConflicts = displayPlan?.conflicts || [];
-  const blockedConflicts = displayPlan?.blockedConflicts || [];
-  const patchedPaths = displayPlan?.patchedPaths || [];
+  const visibleConflicts = browserPlan?.conflicts || [];
+  const blockedConflicts = browserPlan?.blockedConflicts || [];
+  const patchedPaths = browserPlan?.patchedPaths || [];
   const canMerge =
     !!selectedFile &&
     !!parsed &&
     !!payload &&
+    !!activePayloadFiles &&
     !parseError &&
     !isBusy &&
-    ((!!browserPlan?.files && !scaleRequiresCompiler) || (requiresCompilerHelper && helperStatus.available));
+    !scaleVariantError &&
+    !!browserPlan?.files &&
+    blockedConflicts.length === 0;
   const isPatchReady = patchedPaths.length > 0 && blockedConflicts.length === 0;
-  const buttonLabel = requiresCompilerHelper && !helperStatus.available
-    ? "Start Helper to Patch"
-    : (requiresCompilerHelper ? "Compiler Patch + Repack VPK" : (isPatchReady ? "Patch + Repack VPK" : "Repack VPK"));
+  const buttonLabel = isPatchReady ? "Patch + Repack VPK" : "Repack VPK";
   const hasScanResult = !!parsed && !!payload && !parseError;
   const resultTone = blockedConflicts.length > 0
     ? "danger"
-    : (hasScanResult && (requiresCompilerHelper || isPatchReady) ? "patch" : (hasScanResult ? "safe" : "idle"));
+    : (hasScanResult && isPatchReady ? "patch" : (hasScanResult ? "safe" : "idle"));
   const resultTitle = parseError
     ? "Upload needs attention"
     : (blockedConflicts.length > 0
       ? "Some paths still need a rule"
-      : (requiresCompilerHelper
-        ? (scaleRequiresCompiler ? "Ready for compiler scaling" : "Ready for compiler patching")
-        : (hasScanResult && isPatchReady
-          ? "Ready to patch in browser"
-          : (hasScanResult ? "Ready to merge" : "Choose a VPK to begin"))));
+      : (scaleVariantError
+        ? "HUD UI scale needs attention"
+        : (scaleVariantPending
+          ? "Loading compiled scale variant"
+          : (hasScanResult && isPatchReady
+            ? "Ready to patch in browser"
+            : (hasScanResult ? "Ready to merge" : "Choose a VPK to begin")))));
   const resultCopy = parseError
     ? parseError
-    : (blockedConflicts[0]?.reason || (requiresCompilerHelper
-      ? "The local helper will patch source, recompile the compiled HUD files, then repack the uploaded addon."
-      : (hasScanResult && isPatchReady
-        ? "Supported conflicts will be patched in place before the merged VPK downloads."
-        : (hasScanResult
-          ? "No payload path blocks the merge. The download will keep existing files and add the 3D HUD payload."
-          : "The tool reads the uploaded addon locally and shows whether it can merge, patch, or needs the compiler helper."))));
-  const helperCommandVisible = requiresCompilerHelper && !helperStatus.available;
+    : (scaleVariantError || blockedConflicts[0]?.reason || (hasScanResult && isPatchReady
+      ? "Supported conflicts will be patched in place before the merged VPK downloads."
+      : (hasScanResult
+        ? "No payload path blocks the merge. The download will keep existing files and add the 3D HUD payload."
+        : "The tool reads the uploaded addon locally and merges the selected compiled HUD scale variant in browser.")));
   const selectedFileText = selectedFile ? `${selectedFile.name} - ${formatBytes(selectedFile.size)}` : "No VPK selected";
   const actionHelp = isBusy
     ? "Working on the uploaded VPK..."
-    : (canMerge ? "Builds and downloads a merged copy. The original file is not changed." : "Choose a VPK and wait for readiness checks.");
+    : (scaleVariantPending
+      ? "Loading the selected compiled HUD UI scale variant..."
+      : (canMerge ? "Builds and downloads a merged copy. The original file is not changed." : "Choose a VPK and wait for readiness checks."));
   const tutorialGifUrl = joinAssetPath(import.meta.env.BASE_URL, TUTORIAL_GIF_PATH);
-
-  async function refreshHelperStatus(options = {}) {
-    dispatch({
-      type: "helperLoaded",
-      available: false,
-      message: options.manual ? "Connecting to local compiler helper..." : "Checking local compiler helper..."
-    });
-
-    const nextHelperStatus = await loadHelperStatus(options.signal);
-    dispatch({ type: "helperLoaded", ...nextHelperStatus });
-    return nextHelperStatus;
-  }
 
   async function parseFile(file) {
     const runId = parseRunRef.current + 1;
@@ -450,27 +400,18 @@ export default function HudInjectIsland({ gitCommitInfo = null }) {
   }
 
   async function handleBuild() {
-    if (!selectedFile || !parsed || !payload) return;
-    if (requiresCompilerHelper && !helperStatus.available) {
-      try {
-        await refreshHelperStatus({ manual: true });
-      } catch (error) {
-        const message = helperBlockedMessage(error);
-        dispatch({ type: "helperLoaded", available: false, message });
-        dispatch({ type: "status", status: message });
-      }
-      return;
-    }
+    if (!selectedFile || !parsed || !payload || !activePayloadFiles) return;
     dispatch({
       type: "busy",
       value: true,
-      status: requiresCompilerHelper ? "Patching with local Source 2 compiler..." : "Packing merged VPK..."
+      status: "Packing merged VPK..."
     });
     try {
-      const mergePlan = resolveHudPayloadConflicts(parsed.files, payload.files, {
-        hudProbeSource: payload.hudProbeSource
+      const mergePlan = resolveHudPayloadConflicts(parsed.files, activePayloadFiles, {
+        hudProbeSource: payload.hudProbeSource,
+        knownScaleVariantSignaturesByPath: payload.knownScaleVariantSignaturesByPath
       });
-      if (mergePlan.files && mergePlan.blockedConflicts.length === 0 && !scaleRequiresCompiler) {
+      if (mergePlan.files && mergePlan.blockedConflicts.length === 0) {
         const bytes = writeVpk(mergePlan.files);
         downloadBytes(outputFilename(selectedFile.name), bytes);
         const patchText = mergePlan.patchedPaths.length > 0 ? " Patched supported conflicts." : "";
@@ -478,35 +419,12 @@ export default function HudInjectIsland({ gitCommitInfo = null }) {
         return;
       }
 
-      const compilerMergePlan = createCompilerBackedHudMergePlan(parsed.files, payload.files, {
-        hudProbeSource: payload.hudProbeSource,
-        hudUiScale
-      });
-      if (!compilerMergePlan.files || compilerMergePlan.blockedConflicts.length > 0) {
-        const count = mergePlan.blockedConflicts.length || mergePlan.conflicts.length;
-        throw new Error(`Blocked by ${count} unresolved conflicting path${count === 1 ? "" : "s"}`);
-      }
-
-      const result = await requestCompilerBackedMerge(selectedFile, { hudUiScale });
-      downloadBytes(outputFilename(selectedFile.name), result.bytes);
-      const patchText = result.patchedPaths.length > 0
-        ? ` Compiler patched ${result.patchedPaths.length} compiled conflict${result.patchedPaths.length === 1 ? "" : "s"}.`
-        : "";
-      dispatch({ type: "status", status: `Built ${outputFilename(selectedFile.name)} (${formatBytes(result.bytes.byteLength)}).${patchText}` });
+      const count = mergePlan.blockedConflicts.length || mergePlan.conflicts.length;
+      throw new Error(`Blocked by ${count} unresolved conflicting path${count === 1 ? "" : "s"}`);
     } catch (error) {
       dispatch({ type: "status", status: error?.message || String(error) });
     } finally {
       dispatch({ type: "busy", value: false });
-    }
-  }
-
-  async function handleHelperConnect() {
-    try {
-      await refreshHelperStatus({ manual: true });
-    } catch (error) {
-      const message = helperBlockedMessage(error);
-      dispatch({ type: "helperLoaded", available: false, message });
-      dispatch({ type: "status", status: message });
     }
   }
 
@@ -523,11 +441,11 @@ export default function HudInjectIsland({ gitCommitInfo = null }) {
     <section className="injector" aria-label="3D HUD VPK merger">
       <HeroPanel
         gitCommitInfo={activeGitCommitInfo}
-        helperStatus={helperStatus}
-        onHelperConnect={handleHelperConnect}
         onTutorialOpen={() => setIsTutorialOpen(true)}
         onThemeModeChange={handleThemeModeChange}
         payload={payload}
+        scaleStatusLabel={scaleStatusLabel}
+        scaleStatusTone={scaleStatusTone}
         themeMode={themeMode}
       />
       <CommandPanel
@@ -535,12 +453,10 @@ export default function HudInjectIsland({ gitCommitInfo = null }) {
         buttonLabel={buttonLabel}
         canMerge={canMerge}
         handleBuild={handleBuild}
-        handleHelperConnect={handleHelperConnect}
         handleDragLeave={handleDragLeave}
         handleDragOver={handleDragOver}
         handleDrop={handleDrop}
         handleFileChange={handleFileChange}
-        helperCommandVisible={helperCommandVisible}
         hudUiScale={hudUiScale}
         isDragging={isDragging}
         onHudUiScaleChange={(value) => setHudUiScale(normalizeHudUiScale(value))}
@@ -549,13 +465,11 @@ export default function HudInjectIsland({ gitCommitInfo = null }) {
       <ResultPanel
         blockedConflicts={blockedConflicts}
         hasScanResult={hasScanResult}
-        helperStatus={helperStatus}
         isPatchReady={isPatchReady}
         parsed={parsed}
         parseError={parseError}
         payload={payload}
         payloadStatus={activePayloadStatus}
-        requiresCompilerHelper={requiresCompilerHelper}
         resultCopy={resultCopy}
         resultTitle={resultTitle}
         resultTone={resultTone}
@@ -612,7 +526,7 @@ function PageFooter() {
   );
 }
 
-function HeroPanel({ gitCommitInfo, helperStatus, onHelperConnect, onTutorialOpen, onThemeModeChange, payload, themeMode }) {
+function HeroPanel({ gitCommitInfo, onTutorialOpen, onThemeModeChange, payload, scaleStatusLabel, scaleStatusTone, themeMode }) {
   return (
     <header className="hero-panel">
       <div className="hero-copy">
@@ -635,7 +549,7 @@ function HeroPanel({ gitCommitInfo, helperStatus, onHelperConnect, onTutorialOpe
           ) : null}
         </div>
         <p className="hero-text">
-          Merge the compiled 3D HUD payload into an existing addon VPK. The browser checks paths first; the helper only steps in when compiled layout or CSS patching is needed.
+          Merge the compiled 3D HUD payload into an existing addon VPK. The browser checks paths first and uses precompiled scale variants for every HUD UI scale value.
         </p>
         <div className="related-tools" aria-label="Similar Hantu-Raya tools">
           <span className="related-tools-label">Similar tools</span>
@@ -670,13 +584,7 @@ function HeroPanel({ gitCommitInfo, helperStatus, onHelperConnect, onTutorialOpe
 
         <div className="readiness" aria-label="Readiness checks">
           <StatusBadge label="Payload" value={payload ? "Ready" : "Loading"} tone={payload ? "good" : "warn"} />
-          <StatusBadge
-            label="Helper"
-            value={helperStatus.available ? "Ready" : "Offline"}
-            tone={helperStatus.available ? "good" : "warn"}
-            actionLabel={helperStatus.available ? "" : "Connect"}
-            onAction={helperStatus.available ? null : onHelperConnect}
-          />
+          <StatusBadge label="Scale" value={scaleStatusLabel} tone={scaleStatusTone} />
         </div>
 
         <ThemeSwitcher value={themeMode} onChange={onThemeModeChange} />
@@ -770,12 +678,10 @@ function CommandPanel({
   buttonLabel,
   canMerge,
   handleBuild,
-  handleHelperConnect,
   handleDragLeave,
   handleDragOver,
   handleDrop,
   handleFileChange,
-  helperCommandVisible,
   hudUiScale,
   isDragging,
   onHudUiScaleChange,
@@ -804,7 +710,7 @@ function CommandPanel({
       <div className="scale-control">
         <span className="scale-copy">
           <label className="scale-label" htmlFor="hud-ui-scale">HUD UI scale</label>
-          <span id="hud-ui-scale-help" className="scale-help">170 is browser-ready. Other values use the local helper for real compiled CSS.</span>
+          <span id="hud-ui-scale-help" className="scale-help">Every value uses a real precompiled Source 2 CSS variant and merges locally in browser.</span>
         </span>
         <span className="scale-input-row">
           <input
@@ -822,13 +728,6 @@ function CommandPanel({
       </div>
 
       <p className="action-help">{actionHelp}</p>
-
-      {helperCommandVisible ? (
-        <div className="helper-callout" role="note">
-          <span>Compiler helper required for this scale or VPK. Run <kbd>npm run helper</kbd>, then allow local access.</span>
-          <button type="button" className="helper-connect" onClick={handleHelperConnect}>Connect helper</button>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -836,13 +735,11 @@ function CommandPanel({
 function ResultPanel({
   blockedConflicts,
   hasScanResult,
-  helperStatus,
   isPatchReady,
   parsed,
   parseError,
   payload,
   payloadStatus,
-  requiresCompilerHelper,
   resultCopy,
   resultTitle,
   resultTone,
@@ -851,7 +748,7 @@ function ResultPanel({
 }) {
   const stateText = blockedConflicts.length > 0
     ? "Blocked"
-    : (hasScanResult ? (requiresCompilerHelper || isPatchReady ? "Patchable" : "Safe") : "Waiting");
+    : (hasScanResult ? (isPatchReady ? "Patchable" : "Safe") : "Waiting");
 
   return (
     <section className={`result-card result-${resultTone}`} aria-label="Merge result">
@@ -869,13 +766,12 @@ function ResultPanel({
         <SummaryMetric label="Uploaded entries" value={parsed ? parsed.files.length.toLocaleString() : "-"} />
         <SummaryMetric label="Payload files" value={payload ? payload.files.length.toLocaleString() : "-"} />
         <SummaryMetric label="Conflicts" value={hasScanResult ? visibleConflicts.length.toLocaleString() : "-"} />
-        <SummaryMetric label="Mode" value={requiresCompilerHelper ? "Compiler" : (isPatchReady ? "Browser patch" : "Browser merge")} />
+        <SummaryMetric label="Mode" value={isPatchReady ? "Browser patch" : "Browser merge"} />
       </div>
 
       <div className="status-list" role="status" aria-live="polite">
         <StatusLine tone={parseError ? "bad" : "neutral"}>{status}</StatusLine>
         <StatusLine tone={payload ? "good" : "warn"}>{payloadStatus}</StatusLine>
-        <StatusLine tone={helperStatus.available ? "good" : "warn"}>{helperStatus.message}</StatusLine>
       </div>
 
       <PayloadVersionPanel payload={payload} />

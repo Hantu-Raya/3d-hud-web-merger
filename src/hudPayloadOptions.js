@@ -1,16 +1,110 @@
+import { crc32 } from "./crc32.js";
+import { normalizeVpkPath } from "./vpkMerge.js";
+
 export const MIN_HUD_UI_SCALE = 120;
 export const MAX_HUD_UI_SCALE = 170;
 export const DEFAULT_HUD_UI_SCALE = 170;
+export const HUD_UI_SCALE_PATCHED_PATHS = [
+  "panorama/styles/3d_hud.vcss_c",
+  "panorama/styles/hud_health_container.vcss_c"
+];
+
 const DEFAULT_HEALTH_REGEN_MARGIN_RIGHT = 20;
 const RECENT_COUNTER_STACK_HEIGHT = 96;
 const RECENT_COUNTER_MARGIN_TOP = -36;
 const RECENT_HEAL_MARGIN_RIGHT = 86;
 const RECENT_DAMAGE_MARGIN_RIGHT = -158;
+const HUD_UI_SCALE_PATCHED_PATH_SET = new Set(HUD_UI_SCALE_PATCHED_PATHS.map(normalizeVpkPath));
+
+function cloneBytes(bytes) {
+  return bytes instanceof Uint8Array ? new Uint8Array(bytes) : new Uint8Array(bytes);
+}
+
+function crc32Hex(bytes) {
+  return crc32(bytes).toString(16).padStart(8, "0");
+}
+
+function addSignature(signaturesByPath, path, signature) {
+  const normalizedPath = normalizeVpkPath(path);
+  if (!HUD_UI_SCALE_PATCHED_PATH_SET.has(normalizedPath) || !signature) return;
+  const key = fileSignatureKey(signature);
+  if (!key) return;
+  if (!signaturesByPath.has(normalizedPath)) {
+    signaturesByPath.set(normalizedPath, new Set());
+  }
+  signaturesByPath.get(normalizedPath).add(key);
+}
+
+function signatureFromManifestEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  if (!Number.isFinite(Number(entry.size)) || !entry.crc32) return null;
+  return {
+    size: Number(entry.size),
+    crc32: String(entry.crc32)
+  };
+}
 
 export function normalizeHudUiScale(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return DEFAULT_HUD_UI_SCALE;
   return Math.max(MIN_HUD_UI_SCALE, Math.min(MAX_HUD_UI_SCALE, Math.round(numeric)));
+}
+
+export function isHudUiScaleOwnedPath(path) {
+  return HUD_UI_SCALE_PATCHED_PATH_SET.has(normalizeVpkPath(path));
+}
+
+export function createFileSignature(bytes) {
+  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  return {
+    size: data.byteLength,
+    crc32: crc32Hex(data)
+  };
+}
+
+export function fileSignatureKey(signature) {
+  if (!signature || !Number.isFinite(Number(signature.size)) || !signature.crc32) return "";
+  return `${Number(signature.size)}:${String(signature.crc32).toLowerCase().padStart(8, "0")}`;
+}
+
+export function buildHudUiScaleKnownSignatures(manifest, payloadFiles) {
+  const signaturesByPath = new Map();
+  for (const file of payloadFiles || []) {
+    if (isHudUiScaleOwnedPath(file.path)) {
+      addSignature(signaturesByPath, file.path, createFileSignature(file.bytes));
+    }
+  }
+
+  const scaleOptions = manifest?.scaleOptions?.hudUiScale;
+  for (const [path, signature] of Object.entries(scaleOptions?.defaultSignatures || {})) {
+    addSignature(signaturesByPath, path, signatureFromManifestEntry(signature));
+  }
+
+  for (const variant of Object.values(scaleOptions?.variants || {})) {
+    for (const [path, entry] of Object.entries(variant || {})) {
+      addSignature(signaturesByPath, path, signatureFromManifestEntry(entry));
+    }
+  }
+
+  return signaturesByPath;
+}
+
+export function applyHudUiScalePayloadFiles(payloadFiles, variantFilesByPath = new Map()) {
+  const replacements = new Map();
+  for (const [path, bytes] of variantFilesByPath || []) {
+    const normalizedPath = normalizeVpkPath(path);
+    if (HUD_UI_SCALE_PATCHED_PATH_SET.has(normalizedPath)) {
+      replacements.set(normalizedPath, cloneBytes(bytes));
+    }
+  }
+
+  return (payloadFiles || []).map((file) => {
+    const normalizedPath = normalizeVpkPath(file.path);
+    return {
+      path: String(file.path),
+      bytes: replacements.has(normalizedPath) ? cloneBytes(replacements.get(normalizedPath)) : cloneBytes(file.bytes)
+    };
+  });
 }
 
 function setDeclaration(blockBody, property, value) {

@@ -1,3 +1,10 @@
+import {
+  DEFAULT_HUD_UI_SCALE,
+  HUD_UI_SCALE_PATCHED_PATHS,
+  buildHudUiScaleKnownSignatures,
+  normalizeHudUiScale
+} from "./hudPayloadOptions.js";
+
 function joinUrl(baseUrl, path) {
   const base = String(baseUrl || "/");
   const cleanBase = base.endsWith("/") ? base : `${base}/`;
@@ -22,6 +29,14 @@ async function fetchText(url) {
     throw new Error(`Failed to load ${url} (${response.status})`);
   }
   return response.text();
+}
+
+function scaleVariantFileForEntry(entry) {
+  return typeof entry === "string" ? entry : entry?.file;
+}
+
+function hudScaleOptions(manifest) {
+  return manifest?.scaleOptions?.hudUiScale || null;
 }
 
 export async function loadHudPayload(baseUrl = "/") {
@@ -51,6 +66,34 @@ export async function loadHudPayload(baseUrl = "/") {
     manifest,
     files,
     hudProbeSource,
+    knownScaleVariantSignaturesByPath: buildHudUiScaleKnownSignatures(manifest, files),
     totalBytes: files.reduce((sum, file) => sum + file.bytes.byteLength, 0)
   };
+}
+
+export async function loadHudScaleVariant(baseUrl = "/", manifest, hudUiScale) {
+  const scale = normalizeHudUiScale(hudUiScale);
+  if (scale === DEFAULT_HUD_UI_SCALE) {
+    return new Map();
+  }
+
+  const scaleOptions = hudScaleOptions(manifest);
+  const variant = scaleOptions?.variants?.[String(scale)];
+  if (!variant) {
+    throw new Error(`The bundled payload does not include a compiled HUD UI scale variant for ${scale}%.`);
+  }
+
+  const entries = await Promise.all((scaleOptions.paths || HUD_UI_SCALE_PATCHED_PATHS).map(async (path) => {
+    const normalizedPath = normalizeManifestPath(path);
+    const variantFile = scaleVariantFileForEntry(variant[normalizedPath]);
+    if (!variantFile) {
+      throw new Error(`HUD UI scale ${scale}% is missing ${normalizedPath}.`);
+    }
+    return [
+      normalizedPath,
+      await fetchBytes(joinUrl(baseUrl, `payload/3d-hud/${normalizeManifestPath(variantFile)}`))
+    ];
+  }));
+
+  return new Map(entries);
 }

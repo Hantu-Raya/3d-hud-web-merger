@@ -21,7 +21,7 @@ const DEMO_MIN_HUD_UI_SCALE = 120;
 const DEMO_MAX_HUD_UI_SCALE = 170;
 const DEMO_DEFAULT_HUD_UI_SCALE = 170;
 const DEMO_PREVIEW_HUD_UI_SCALE = 145;
-const SCALE_DEMO_TEXT = "1. Set HUD UI scale first. Use 170 for browser-only merging; lower values need the local helper.";
+const SCALE_DEMO_TEXT = "1. Set HUD UI scale first. Every value uses a real precompiled variant and merges in browser.";
 
 function run(command, args) {
   const result = spawnSync(command, args, {

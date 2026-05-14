@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { resolveHudPayloadConflicts } from "../src/hudConflictResolver.js";
+import { createFileSignature, fileSignatureKey } from "../src/hudPayloadOptions.js";
 import { compilePanoramaLayoutResource } from "../src/source2ResourceWriter.js";
 
 const encoder = new TextEncoder();
@@ -86,6 +87,38 @@ test("resolveHudPayloadConflicts keeps non-hud conflicts blocked", () => {
   assert.equal(result.files, null);
   assert.equal(result.blockedConflicts.length, 1);
   assert.equal(result.blockedConflicts[0].path, "panorama/styles/3d_hud.vcss_c");
+});
+
+test("resolveHudPayloadConflicts updates known generated HUD UI scale CSS variants", () => {
+  const existingScaleBytes = encoder.encode("known-generated-scale");
+  const activeScaleBytes = encoder.encode("selected-scale");
+  const knownScaleVariantSignaturesByPath = new Map([
+    [
+      "panorama/styles/3d_hud.vcss_c",
+      new Set([fileSignatureKey(createFileSignature(existingScaleBytes))])
+    ]
+  ]);
+
+  const result = resolveHudPayloadConflicts(
+    [
+      { path: "panorama/styles/3d_hud.vcss_c", bytes: existingScaleBytes },
+      textFile("panorama/scripts/user_feature.vjs_c", "user")
+    ],
+    [
+      { path: "panorama/styles/3d_hud.vcss_c", bytes: activeScaleBytes },
+      textFile("panorama/styles/unit_status_icons.vcss_c", "icons")
+    ],
+    { knownScaleVariantSignaturesByPath }
+  );
+
+  const scaleFile = result.files.find((file) => file.path === "panorama/styles/3d_hud.vcss_c");
+  assert.equal(result.blockedConflicts.length, 0);
+  assert.deepEqual(result.patchedPaths, ["panorama/styles/3d_hud.vcss_c"]);
+  assert.deepEqual([...scaleFile.bytes], [...activeScaleBytes]);
+  assert.equal(
+    result.conflicts.find((conflict) => conflict.path === "panorama/styles/3d_hud.vcss_c")?.resolution,
+    "Update HUD UI scale CSS"
+  );
 });
 
 test("resolveHudPayloadConflicts keeps byte-identical payload conflicts without blocking reruns", () => {

@@ -1,4 +1,9 @@
 import { isCssHijackBasePath } from "./cssHijackPaths.js";
+import {
+  createFileSignature,
+  fileSignatureKey,
+  isHudUiScaleOwnedPath
+} from "./hudPayloadOptions.js";
 import { createMergedFiles, findPathConflicts, normalizeVpkPath } from "./vpkMerge.js";
 
 const HUD_LAYOUT_PATH = "panorama/layout/hud.vxml_c";
@@ -32,6 +37,14 @@ function isHudDynamicScript(path) {
 
 function isPatchableStyle(path) {
   return PATCHABLE_STYLE_PATHS.has(normalizeVpkPath(path));
+}
+
+function isKnownScaleVariant(path, bytes, options) {
+  const normalizedPath = normalizeVpkPath(path);
+  if (!isHudUiScaleOwnedPath(normalizedPath)) return false;
+  const signatures = options.knownScaleVariantSignaturesByPath?.get(normalizedPath);
+  if (!signatures) return false;
+  return signatures.has(fileSignatureKey(createFileSignature(bytes)));
 }
 
 function bytesEqual(left, right) {
@@ -71,7 +84,7 @@ function replaceFileBytes(files, path, bytes) {
   ));
 }
 
-export function resolveHudPayloadConflicts(existingFiles, payloadFiles) {
+export function resolveHudPayloadConflicts(existingFiles, payloadFiles, options = {}) {
   const conflicts = findPathConflicts(existingFiles, payloadFiles);
   const existingFileByPath = createFileMap(existingFiles);
   const payloadFileByPath = createFileMap(payloadFiles);
@@ -115,12 +128,22 @@ export function resolveHudPayloadConflicts(existingFiles, payloadFiles) {
   const blockedConflicts = [];
   const baseCssConflicts = [];
   const scriptConflicts = [];
+  const scaleUpdateConflicts = [];
 
   for (const conflict of activeConflicts) {
     if (isHudLayout(conflict.path) || isHudHealthLayout(conflict.path)) {
       blockedConflicts.push(annotateConflict(conflict, LAYOUT_CONFLICT_REASON));
     } else if (isHudDynamicScript(conflict.path)) {
       scriptConflicts.push(conflict);
+    } else if (isHudUiScaleOwnedPath(conflict.path)) {
+      const existingFile = existingFileByPath.get(normalizeVpkPath(conflict.path));
+      if (existingFile && isKnownScaleVariant(conflict.path, existingFile.bytes, options)) {
+        scaleUpdateConflicts.push(conflict);
+      } else if (isPatchableStyle(conflict.path)) {
+        styleConflicts.push(conflict);
+      } else {
+        blockedConflicts.push(annotateConflict(conflict, "This CSS path is not recognized as a generated 3D HUD scale file"));
+      }
     } else if (isCssHijackBasePath(conflict.path)) {
       baseCssConflicts.push(conflict);
     } else if (isPatchableStyle(conflict.path)) {
@@ -168,6 +191,25 @@ export function resolveHudPayloadConflicts(existingFiles, payloadFiles) {
       conflict,
       "Existing 3D HUD runtime script will be updated to the bundled payload version",
       "Update 3D HUD script"
+    ));
+  }
+
+  for (const conflict of scaleUpdateConflicts) {
+    const path = normalizeVpkPath(conflict.path);
+    const payloadStyle = payloadFileByPath.get(path);
+    if (!payloadStyle) {
+      blockedConflicts.push(annotateConflict(
+        conflict,
+        "Selected HUD UI scale payload entry was not found after conflict detection"
+      ));
+      continue;
+    }
+    nextExistingFiles = replaceFileBytes(nextExistingFiles, path, cloneFile(payloadStyle).bytes);
+    patchedPaths.push(path);
+    resolvedConflicts.push(annotateConflict(
+      conflict,
+      "Existing generated 3D HUD scale CSS will be replaced with the selected compiled scale variant",
+      "Update HUD UI scale CSS"
     ));
   }
 
